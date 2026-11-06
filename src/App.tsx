@@ -457,6 +457,18 @@ export const App: React.FC = () => {
         },
       };
 
+      if (actionType === 'move' && to) {
+        playersState[pId] = {
+          position: { ...to },
+          wallsRemaining: players[pId]?.wallsRemaining ?? 0,
+        };
+      } else if (actionType === 'wall') {
+        playersState[pId] = {
+          position: { ...players[pId].position },
+          wallsRemaining: Math.max(0, (players[pId]?.wallsRemaining ?? 1) - 1),
+        };
+      }
+
       return {
         stepNumber: replaySteps.length + 1,
         turnNumber: turnCount,
@@ -1085,14 +1097,6 @@ export const App: React.FC = () => {
         onClose={() => setIsOnlineModalOpen(false)}
       />
 
-      {/* Game Replay Modal */}
-      <ReplayModal
-        isOpen={isReplayOpen}
-        replaySteps={replaySteps}
-        themeId={themeId}
-        onClose={() => setIsReplayOpen(false)}
-      />
-
       {/* Mobile QR Modal */}
       <MobileQRModal
         isOpen={isQRModalOpen}
@@ -1102,13 +1106,25 @@ export const App: React.FC = () => {
 
       {/* Victory Celebration Modal */}
       <VictoryModal
-        winnerId={winner}
+        winnerId={isReplayOpen ? null : winner}
         players={players}
         playerCount={playerCount}
         turnCount={turnCount}
         theme={currentTheme}
         onRestart={() => resetGame(playerCount, gameMode, aiDifficulty)}
         onOpenReplay={() => setIsReplayOpen(true)}
+      />
+
+      {/* Game Replay Modal (Rendered on top with z-[70] and active when Victory is reviewed) */}
+      <ReplayModal
+        isOpen={isReplayOpen}
+        replaySteps={replaySteps}
+        themeId={themeId}
+        onClose={() => setIsReplayOpen(false)}
+        onRestart={() => {
+          setIsReplayOpen(false);
+          resetGame(playerCount, gameMode, aiDifficulty);
+        }}
       />
 
       {/* HUD Bar */}

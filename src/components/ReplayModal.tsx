@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { ReplayStep, ThemeId } from '../types/game';
 import { THEMES } from '../types/themes';
-import { X, Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, Film } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, ChevronLeft, ChevronRight, Film, RotateCcw, ArrowLeft } from 'lucide-react';
 import { Cell } from './Cell';
 import { Wall } from './Wall';
 
@@ -10,6 +10,7 @@ interface ReplayModalProps {
   replaySteps: ReplayStep[];
   themeId: ThemeId;
   onClose: () => void;
+  onRestart?: () => void;
 }
 
 export const ReplayModal: React.FC<ReplayModalProps> = ({
@@ -17,6 +18,7 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
   replaySteps,
   themeId,
   onClose,
+  onRestart,
 }) => {
   const [currentStepIndex, setCurrentStepIndex] = useState<number>(0);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -46,7 +48,31 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
     return () => clearInterval(interval);
   }, [isPlaying, replaySteps.length]);
 
-  if (!isOpen || replaySteps.length === 0) return null;
+  if (!isOpen) return null;
+
+  if (replaySteps.length === 0) {
+    return (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-pop-in select-none">
+        <div className="bg-slate-900 border border-slate-700/80 rounded-3xl p-6 text-center max-w-sm w-full space-y-4 shadow-2xl">
+          <div className="w-12 h-12 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center mx-auto">
+            <Film className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="font-extrabold text-base text-slate-100">Aucun coup enregistré</h3>
+            <p className="text-xs text-slate-400 mt-1">
+              Cette partie n'a pas encore d'historique de coups à revoir.
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition-all border border-slate-700"
+          >
+            Fermer
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const currentStep = replaySteps[currentStepIndex];
   const theme = THEMES[themeId] || THEMES.wood;
@@ -72,10 +98,10 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-pop-in select-none">
-      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-lg max-h-[95dvh] overflow-hidden shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-pop-in select-none">
+      <div className="bg-slate-900 border border-slate-700/80 rounded-3xl w-full max-w-lg max-h-[96dvh] overflow-hidden shadow-2xl flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-3.5 border-b border-slate-800">
+        <div className="flex items-center justify-between p-3 sm:p-3.5 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
               <Film className="w-4 h-4" />
@@ -89,16 +115,18 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+            className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all flex items-center gap-1 text-xs px-2.5 font-bold"
             aria-label="Fermer"
+            title="Retour à l'écran de victoire"
           >
-            <X className="w-5 h-5" />
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Fermer</span>
           </button>
         </div>
 
         {/* Board Display Area */}
         <div className="flex-1 min-h-0 p-2 flex items-center justify-center">
-          <div className="relative w-full aspect-square max-w-[min(82vw,360px)] flex items-center justify-center">
+          <div className="relative w-full aspect-square max-w-[min(80vw,350px)] flex items-center justify-center">
             <svg
               viewBox={`0 0 ${BOARD_DIMENSION} ${BOARD_DIMENSION}`}
               className="w-full h-full drop-shadow-xl overflow-visible pointer-events-none"
@@ -152,6 +180,7 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
                       pixelY={pixelY}
                       size={CELL_SIZE}
                       playerOnCell={mockPlayer}
+                      theme={theme}
                       onSelect={() => {}}
                     />
                   );
@@ -166,6 +195,7 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
                   y={w.y}
                   orientation={w.orientation}
                   placedBy={w.placedBy}
+                  theme={theme}
                   cellSize={CELL_SIZE}
                   grooveSize={GROOVE_SIZE}
                   padding={PADDING}
@@ -183,19 +213,23 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
         </div>
 
         {/* Playback Controls & Slider */}
-        <div className="p-3 bg-slate-900 flex flex-col gap-2">
+        <div className="p-3 bg-slate-900 flex flex-col gap-2.5">
           {/* Timeline Range Slider */}
-          <input
-            type="range"
-            min={0}
-            max={replaySteps.length - 1}
-            value={currentStepIndex}
-            onChange={(e) => {
-              setCurrentStepIndex(Number(e.target.value));
-              setIsPlaying(false);
-            }}
-            className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
-          />
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-400 font-mono">1</span>
+            <input
+              type="range"
+              min={0}
+              max={replaySteps.length - 1}
+              value={currentStepIndex}
+              onChange={(e) => {
+                setCurrentStepIndex(Number(e.target.value));
+                setIsPlaying(false);
+              }}
+              className="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-500"
+            />
+            <span className="text-[10px] text-slate-400 font-mono">{replaySteps.length}</span>
+          </div>
 
           {/* Stepper Buttons */}
           <div className="flex items-center justify-between gap-1 max-w-xs mx-auto w-full">
@@ -259,6 +293,27 @@ export const ReplayModal: React.FC<ReplayModalProps> = ({
             >
               <SkipForward className="w-4 h-4" />
             </button>
+          </div>
+
+          {/* Bottom Actions: Retour & Rejouer */}
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              onClick={onClose}
+              className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Retour Victoire</span>
+            </button>
+
+            {onRestart && (
+              <button
+                onClick={onRestart}
+                className="py-2 px-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 text-slate-950 font-black text-xs shadow active:scale-95 transition-all flex items-center justify-center gap-1.5"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Rejouer</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
