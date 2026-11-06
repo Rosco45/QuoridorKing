@@ -777,6 +777,78 @@ export const App: React.FC = () => {
     hapticManager.vibrateTap();
   }, []);
 
+  const handleUndo = useCallback(() => {
+    if (replaySteps.length === 0 || isAIThinking || isPaused || gameMode === 'online') return;
+
+    if (aiTimeoutRef.current) {
+      clearTimeout(aiTimeoutRef.current);
+      aiTimeoutRef.current = null;
+    }
+    setIsAIThinking(false);
+
+    let stepsToRollback = 1;
+    if (gameMode === 'ai' && replaySteps.length >= 2) {
+      stepsToRollback = 2;
+    }
+
+    const remainingSteps = replaySteps.slice(0, replaySteps.length - stepsToRollback);
+
+    if (remainingSteps.length === 0) {
+      const freshPlayers = createInitialPlayers(playerCount, gameMode);
+      setPlayers(freshPlayers);
+      setActivePlayerId(1);
+      setWalls([]);
+      setTurnCount(1);
+      setWinner(null);
+      setWallPreview(null);
+      setCurrentMode('pawn');
+      setReplaySteps([]);
+    } else {
+      const targetStep = remainingSteps[remainingSteps.length - 1];
+
+      setPlayers((prev) => {
+        const nextPlayers = { ...prev };
+        for (const [idStr, state] of Object.entries(targetStep.playersState)) {
+          const id = Number(idStr) as PlayerId;
+          if (nextPlayers[id]) {
+            nextPlayers[id] = {
+              ...nextPlayers[id],
+              position: { ...state.position },
+              wallsRemaining: state.wallsRemaining,
+            };
+          }
+        }
+        return nextPlayers;
+      });
+
+      setWalls([...targetStep.wallsState]);
+      setTurnCount(targetStep.turnNumber);
+      setWinner(null);
+      setWallPreview(null);
+      setCurrentMode('pawn');
+
+      if (gameMode === 'ai') {
+        setActivePlayerId(1);
+      } else {
+        const nextId = getNextPlayerId(targetStep.playerId, playerCount);
+        setActivePlayerId(nextId);
+      }
+
+      setReplaySteps(remainingSteps);
+    }
+
+    soundManager.playTap();
+    hapticManager.vibrateTap();
+    showToast('info', 'Coup annulé', 'Le plateau a été ramené au coup précédent.');
+  }, [
+    replaySteps,
+    isAIThinking,
+    isPaused,
+    gameMode,
+    playerCount,
+    showToast,
+  ]);
+
   const handleToggleDockSide = useCallback(() => {
     setDockSide((prev) => {
       const next = prev === 'right' ? 'left' : 'right';
@@ -1199,10 +1271,7 @@ export const App: React.FC = () => {
             onToggleOrientation={handleToggleOrientation}
             onConfirmWall={handleConfirmWall}
             onCancelPreview={handleCancelPreview}
-            onUndo={() => {
-              if (replaySteps.length === 0 || gameMode === 'online') return;
-              showToast('info', 'Historique', 'Utilisez le Replay pour revoir vos coups.');
-            }}
+            onUndo={handleUndo}
             onToggleDockSide={handleToggleDockSide}
           />
         </div>
