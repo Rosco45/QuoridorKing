@@ -121,26 +121,28 @@ export const HUD: React.FC<HUDProps> = ({
   ).filter((id) => players[id]);
 
   return (
-    <header className="w-full max-w-2xl mx-auto px-2 pt-1.5 pb-1 flex flex-col gap-1.5 select-none">
-      {/* Top Header Row */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
+    <header className="w-full max-w-2xl mx-auto px-1.5 sm:px-2 pt-1 pb-1 flex flex-col gap-1.5 select-none overflow-x-hidden">
+      {/* Top Header Row: Designed to fit any smartphone screen down to 320px */}
+      <div className="flex items-center justify-between gap-1 w-full min-w-0">
+        {/* Logo / Title */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           <div className="bg-amber-500/20 p-1 rounded-lg border border-amber-500/30">
-            <Trophy className="w-4 h-4 text-amber-400" />
+            <Trophy className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400" />
           </div>
-          <span className="font-extrabold text-sm sm:text-base tracking-wide bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-500 bg-clip-text text-transparent">
-            QuoridorKing
+          <span className="font-extrabold text-xs sm:text-base tracking-wide bg-gradient-to-r from-amber-300 via-yellow-200 to-amber-500 bg-clip-text text-transparent">
+            <span className="inline sm:hidden">QK</span>
+            <span className="hidden sm:inline">QuoridorKing</span>
           </span>
-          <span className="text-[10px] sm:text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
+          <span className="text-[9px] sm:text-xs px-1.5 py-0.2 sm:px-2 sm:py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700">
             T{turnCount}
           </span>
         </div>
 
         {/* Center Mode / Room Badge */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 min-w-0 shrink">
           <button
             onClick={onOpenModeModal}
-            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold transition-all border shadow-sm active:scale-95 ${
+            className={`flex items-center gap-1 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-bold transition-all border shadow-sm active:scale-95 truncate ${
               gameMode === 'ai'
                 ? `${difficultyLabels[aiDifficulty].color} border`
                 : gameMode === 'online'
@@ -151,27 +153,27 @@ export const HUD: React.FC<HUDProps> = ({
           >
             {gameMode === 'ai' ? (
               <>
-                <Bot className="w-3.5 h-3.5" />
-                <span>IA : {difficultyLabels[aiDifficulty].label}</span>
+                <Bot className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                <span className="truncate">{difficultyLabels[aiDifficulty].label}</span>
               </>
             ) : gameMode === 'online' ? (
               <>
-                <Globe className="w-3.5 h-3.5" />
-                <span>En Ligne ({onlineRoomCode || 'Lobby'})</span>
+                <Globe className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                <span className="truncate">{onlineRoomCode || 'En Ligne'}</span>
               </>
             ) : (
               <>
-                <Users className="w-3.5 h-3.5" />
-                <span>{playerCount} Joueurs</span>
+                <Users className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                <span>{playerCount}J</span>
               </>
             )}
-            <span className="text-[10px] opacity-60">▾</span>
+            <span className="text-[9px] opacity-60">▾</span>
           </button>
 
           {gameMode !== 'online' && (
             <button
               onClick={onOpenOnlineLobby}
-              className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-purple-900/40 hover:bg-purple-900/60 text-purple-300 border border-purple-500/40 active:scale-95 transition-all"
+              className="hidden md:flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-purple-900/40 hover:bg-purple-900/60 text-purple-300 border border-purple-500/40 active:scale-95 transition-all"
               title="Jouer en ligne avec un ami (P2P)"
             >
               <Globe className="w-3 h-3 text-purple-400" />
@@ -180,52 +182,57 @@ export const HUD: React.FC<HUDProps> = ({
           )}
         </div>
 
-        {/* Action icons */}
-        <div className="flex items-center gap-1">
+        {/* Action icons - ALWAYS fully visible on mobile */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          {/* Recommencer button - Given prominent placement and never hidden */}
           <button
-            onClick={onOpenThemeSettings}
-            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-amber-300 active:scale-95 transition-all border border-slate-700/60"
-            title="Thèmes visuels et Haptique"
-            aria-label="Thèmes et Réglages"
+            onClick={onResetGame}
+            className="p-1 sm:p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 hover:text-white active:scale-95 transition-all border border-slate-700/80 shadow-sm"
+            title="Recommencer la partie"
+            aria-label="Recommencer"
           >
-            <Palette className="w-4 h-4 text-amber-400" />
+            <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300" />
           </button>
+
           <button
             onClick={onOpenPause}
-            className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 active:scale-95 transition-all border border-amber-500/30"
+            className="p-1 sm:p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 active:scale-95 transition-all border border-amber-500/30"
             title="Pause"
             aria-label="Pause"
           >
-            <Pause className="w-4 h-4 fill-current" />
+            <Pause className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-current" />
           </button>
+
+          <button
+            onClick={onOpenThemeSettings}
+            className="p-1 sm:p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-sky-300 active:scale-95 transition-all border border-slate-700/60"
+            title="Thèmes et Haptique"
+            aria-label="Thèmes"
+          >
+            <Palette className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400" />
+          </button>
+
           <button
             onClick={onToggleMute}
-            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 active:scale-95 transition-all border border-slate-700/60"
+            className="p-1 sm:p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 active:scale-95 transition-all border border-slate-700/60"
             title={isMuted ? 'Activer le son' : 'Couper le son'}
-            aria-label="Contrôle du son"
+            aria-label="Son"
           >
-            {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
+            {isMuted ? <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" /> : <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400" />}
           </button>
+
           <button
             onClick={onOpenRules}
-            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 active:scale-95 transition-all border border-slate-700/60"
+            className="p-1 sm:p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 active:scale-95 transition-all border border-slate-700/60"
             title="Règles du jeu"
             aria-label="Règles"
           >
-            <HelpCircle className="w-4 h-4 text-sky-400" />
-          </button>
-          <button
-            onClick={onResetGame}
-            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 active:scale-95 transition-all border border-slate-700/60"
-            title="Recommencer"
-            aria-label="Recommencer"
-          >
-            <RotateCcw className="w-4 h-4 text-slate-300" />
+            <HelpCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-sky-400" />
           </button>
         </div>
       </div>
 
-      {/* Players Cards Grid (2 cols for 2 players, 4 cols or 2x2 for 4 players) */}
+      {/* Players Battle Cards */}
       <div
         className={`grid gap-1.5 ${
           playerCount === 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'

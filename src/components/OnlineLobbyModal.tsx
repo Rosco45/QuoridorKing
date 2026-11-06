@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import type { PlayerCount, BlitzTimerSetting, PeerPlayerInfo, CoinSide, CoinFlipState, PlayerId } from '../types/game';
-import { X, Check, Share2, Users, Wifi, Play, Coins } from 'lucide-react';
+import { X, Check, Copy, Share2, Users, Wifi, Play, Coins, AlertCircle, RefreshCw } from 'lucide-react';
 import { multiplayerService } from '../engine/multiplayer';
 
 interface OnlineLobbyModalProps {
@@ -24,6 +24,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [statusMsg, setStatusMsg] = useState<string>('');
 
   // Lobby Live State
   const [isInLobby, setIsInLobby] = useState<boolean>(false);
@@ -57,6 +58,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         setPeers([...updatedPeers]);
         setLobbyPlayerCount(count);
         setCoinFlip({ ...updatedCoinFlip });
+        setIsConnecting(false);
       },
       onCoinFlipUpdate: (flipState) => {
         setCoinFlip({ ...flipState });
@@ -69,36 +71,60 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
           startPlayerId
         );
       },
+      onConnectionStatus: (_status, message) => {
+        if (message) {
+          setStatusMsg(message);
+        }
+      },
       onError: (err) => {
         setErrorMsg(err);
+        setIsConnecting(false);
       },
     });
   }, [onStartGame]);
 
   if (!isOpen) return null;
 
-  const handleCopyLink = async () => {
-    const inviteUrl = `${window.location.origin}/?room=${roomId}`;
+  const getInviteUrl = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'https://quoridor-king.vercel.app';
+    return `${origin}/?room=${roomId}`;
+  };
+
+  // 1. Direct copy to clipboard (safe, never suspends the browser tab)
+  const handleCopyLinkOnly = async () => {
+    const inviteUrl = getInviteUrl();
     try {
-      if (navigator.share) {
+      await navigator.clipboard.writeText(inviteUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch {
+      // Fallback
+      const ta = document.createElement('textarea');
+      ta.value = inviteUrl;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    }
+  };
+
+  // 2. Native Share sheet (for WhatsApp, Messages, etc.)
+  const handleShareNative = async () => {
+    const inviteUrl = getInviteUrl();
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
         await navigator.share({
           title: 'Rejoins ma partie de QuoridorKing !',
           text: `Rejoins mon salon QuoridorKing avec le code ${roomId}`,
           url: inviteUrl,
         });
-      } else {
-        await navigator.clipboard.writeText(inviteUrl);
-        setCopiedLink(true);
-        setTimeout(() => setCopiedLink(false), 2500);
-      }
-    } catch {
-      try {
-        await navigator.clipboard.writeText(inviteUrl);
-        setCopiedLink(true);
-        setTimeout(() => setCopiedLink(false), 2500);
       } catch {
-        // ignore
+        // User cancelled share
       }
+    } else {
+      handleCopyLinkOnly();
     }
   };
 
@@ -106,6 +132,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
     if (!playerName.trim()) return;
     setIsConnecting(true);
     setErrorMsg('');
+    setStatusMsg('Création du salon...');
     try {
       localStorage.setItem('quoridor_player_name', playerName.trim());
       const room = await multiplayerService.createRoom(
@@ -129,6 +156,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
     if (!playerName.trim() || !joinCode.trim()) return;
     setIsConnecting(true);
     setErrorMsg('');
+    setStatusMsg('Recherche du salon...');
     try {
       localStorage.setItem('quoridor_player_name', playerName.trim());
       await multiplayerService.joinRoom(joinCode.trim().toUpperCase(), playerName.trim());
@@ -160,20 +188,22 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
     setIsInLobby(false);
     setPeers([]);
     setRoomId('');
+    setStatusMsg('');
+    setErrorMsg('');
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 bg-black/85 backdrop-blur-md animate-pop-in select-none">
-      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[90dvh]">
+      <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl flex flex-col max-h-[92dvh]">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+        <div className="flex items-center justify-between p-3.5 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
               <Wifi className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-extrabold text-base text-slate-100">Multijoueur en Ligne (P2P)</h3>
-              <span className="text-[10px] text-slate-400">Sans serveur • WebRTC direct</span>
+              <h3 className="font-extrabold text-sm sm:text-base text-slate-100">Multijoueur en Ligne (P2P)</h3>
+              <span className="text-[10px] text-slate-400">Sans serveur • WebRTC Direct</span>
             </div>
           </div>
           <button
@@ -186,10 +216,11 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         </div>
 
         {/* Content Body */}
-        <div className="p-4 overflow-y-auto space-y-4">
+        <div className="p-4 overflow-y-auto space-y-3.5">
           {errorMsg && (
-            <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs">
-              {errorMsg}
+            <div className="p-2.5 rounded-xl bg-rose-950/60 border border-rose-500/50 text-rose-300 text-xs flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{errorMsg}</span>
             </div>
           )}
 
@@ -289,9 +320,10 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                   <button
                     onClick={handleCreate}
                     disabled={isConnecting || !playerName.trim()}
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 disabled:opacity-50"
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {isConnecting ? 'Création en cours...' : 'Ouvrir le Salon'}
+                    {isConnecting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{isConnecting ? (statusMsg || 'Création du salon...') : 'Ouvrir le Salon'}</span>
                   </button>
                 </div>
               ) : (
@@ -313,37 +345,65 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                   <button
                     onClick={handleJoin}
                     disabled={isConnecting || !playerName.trim() || !joinCode.trim()}
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 disabled:opacity-50"
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-extrabold text-xs shadow-lg transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {isConnecting ? 'Connexion en cours...' : 'Rejoindre la Partie'}
+                    {isConnecting && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+                    <span>{isConnecting ? (statusMsg || 'Recherche du salon...') : 'Rejoindre la Partie'}</span>
                   </button>
                 </div>
               )}
             </div>
           ) : (
             /* Active Lobby Waiting Room View */
-            <div className="space-y-4">
-              {/* Room Code Card */}
-              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-2">
-                <div>
-                  <span className="text-[10px] text-slate-400 uppercase font-semibold block">
-                    Code du Salon :
-                  </span>
-                  <span className="text-lg font-mono font-black text-purple-400 tracking-wider">
-                    {roomId}
-                  </span>
+            <div className="space-y-3.5">
+              {/* Room Code Card with Dual Share Actions */}
+              <div className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase font-semibold block">
+                      Code du Salon :
+                    </span>
+                    <span className="text-xl font-mono font-black text-purple-400 tracking-wider">
+                      {roomId}
+                    </span>
+                  </div>
+
+                  {/* Status badge */}
+                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-900 border border-slate-700 text-[10px]">
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="font-semibold text-slate-300">{statusMsg || 'Salon en ligne'}</span>
+                  </div>
                 </div>
-                <button
-                  onClick={handleCopyLink}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold active:scale-95 transition-all shadow"
-                >
-                  {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Share2 className="w-3.5 h-3.5" />}
-                  <span>{copiedLink ? 'Copié !' : 'Partager'}</span>
-                </button>
+
+                {/* Sharing Buttons: Direct Copy + Native Share */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    onClick={handleCopyLinkOnly}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-sky-300 font-bold text-xs border border-slate-700 active:scale-95 transition-all"
+                    title="Copier le lien sans quitter le navigateur"
+                  >
+                    {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-sky-400" />}
+                    <span>{copiedLink ? 'Lien copié !' : 'Copier le lien'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleShareNative}
+                    className="flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow active:scale-95 transition-all"
+                    title="Partager sur WhatsApp, SMS ou réseaux"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>WhatsApp / SMS</span>
+                  </button>
+                </div>
+
+                {/* Helpful tip for mobile backgrounding */}
+                <p className="text-[10px] text-slate-400 leading-tight bg-slate-900/60 p-2 rounded-xl border border-slate-800/80">
+                  💡 <strong>Sur smartphone :</strong> Si vous quittez la page pour envoyer le lien sur WhatsApp, revenez simplement sur cet onglet pour que votre ami s'y connecte aussitôt.
+                </p>
               </div>
 
               {/* Connected Players List */}
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 <span className="text-xs font-extrabold text-slate-300 block">
                   Joueurs Connectés ({peers.length}/{lobbyPlayerCount}) :
                 </span>

@@ -20,13 +20,28 @@ export interface MultiplayerCallbacks {
   onRemoteTimeout?: (playerId: PlayerId) => void;
   onRemoteRestart?: () => void;
   onPeerDisconnect?: (peerId: string) => void;
+  onConnectionStatus?: (status: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'error', message?: string) => void;
   onError?: (err: string) => void;
 }
+
+const PEER_CONFIG = {
+  debug: 1,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+    ],
+  },
+};
 
 export class MultiplayerService {
   private peer: Peer | null = null;
   private connections: Map<string, DataConnection> = new Map();
   private hostConnection: DataConnection | null = null;
+  private heartbeatTimer: number | null = null;
+  private isLifecycleHooked: boolean = false;
 
   public isHost: boolean = false;
   public myPeerId: string = '';
@@ -46,8 +61,62 @@ export class MultiplayerService {
 
   private callbacks: MultiplayerCallbacks = {};
 
+  constructor() {
+    this.setupMobileLifecycleHooks();
+  }
+
   public setCallbacks(cb: MultiplayerCallbacks) {
     this.callbacks = { ...this.callbacks, ...cb };
+  }
+
+  /**
+   * Listens for mobile browser lifecycle events (visibilitychange, focus, pageshow).
+   * When a user returns from sharing via WhatsApp/Messages/etc., mobile browsers pause
+   * WebSockets. We proactively detect tab resume and call peer.reconnect().
+   */
+  private setupMobileLifecycleHooks() {
+    if (this.isLifecycleHooked || typeof window === 'undefined') return;
+    this.isLifecycleHooked = true;
+
+    const handleResume = () => {
+      if (document.visibilityState === 'visible' && this.currentRoomId && this.peer && !this.peer.destroyed) {
+        if (this.peer.disconnected) {
+          console.log('[Multiplayer] Tab resumed on mobile, reconnecting signaling socket...');
+          this.callbacks.onConnectionStatus?.('reconnecting', 'Reconnexion au serveur...');
+          try {
+            this.peer.reconnect();
+          } catch (e) {
+            console.warn('[Multiplayer] Reconnect error on resume:', e);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleResume);
+    window.addEventListener('focus', handleResume);
+    window.addEventListener('pageshow', handleResume);
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat();
+    this.heartbeatTimer = window.setInterval(() => {
+      if (this.peer && !this.peer.destroyed) {
+        if (this.peer.disconnected && this.currentRoomId) {
+          try {
+            this.peer.reconnect();
+          } catch {
+            // ignore
+          }
+        }
+      }
+    }, 6000);
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
   }
 
   private generateRoomCode(): string {
@@ -77,12 +146,11 @@ export class MultiplayerService {
     const roomId = this.generateRoomCode();
     this.currentRoomId = roomId;
 
+    this.callbacks.onConnectionStatus?.('connecting', 'Création du salon en cours...');
+
     return new Promise((resolve, reject) => {
       try {
-        const peer = new Peer(roomId, {
-          debug: 1,
-        });
-
+        const peer = new Peer(roomId, PEER_CONFIG);
         this.peer = peer;
 
         peer.on('open', (id) => {
@@ -102,6 +170,8 @@ export class MultiplayerService {
             winnerPlayerId: null,
             flipping: false,
           };
+          this.startHeartbeat();
+          this.callbacks.onConnectionStatus?.('connected', 'Salon prêt');
           resolve(roomId);
         });
 
@@ -109,8 +179,31 @@ export class MultiplayerService {
           this.handleIncomingConnection(conn);
         });
 
+        peer.on('disconnected', () => {
+          console.warn('[Multiplayer] Host disconnected from signaling server, auto-reconnecting...');
+          this.callbacks.onConnectionStatus?.('reconnecting', 'Reconnexion au serveur...');
+          if (this.currentRoomId && !this.peer?.destroyed) {
+            setTimeout(() => {
+              if (this.peer?.disconnected && !this.peer?.destroyed) {
+                try {
+                  this.peer.reconnect();
+                } catch {
+                  // ignore
+                }
+              }
+            }, 500);
+          }
+        });
+
         peer.on('error', (err) => {
+          console.error('[Multiplayer] Host Peer error:', err);
+          if (err.type === 'unavailable-id') {
+            // Very rare collision: retry with fresh code
+            this.createRoom(hostName, playerCount, timerSetting).then(resolve).catch(reject);
+            return;
+          }
           this.callbacks.onError?.(`Erreur de connexion : ${err.message}`);
+          this.callbacks.onConnectionStatus?.('error', err.message);
           reject(err);
         });
       } catch (err) {
@@ -120,7 +213,8 @@ export class MultiplayerService {
   }
 
   /**
-   * Joins an existing room as a Client
+   * Joins an existing room as a Client with automatic retries in case the host
+   * is briefly backgrounded while sharing the link.
    */
   public async joinRoom(roomId: string, clientName: string): Promise<PlayerId> {
     this.destroy();
@@ -128,46 +222,113 @@ export class MultiplayerService {
     this.myName = clientName || 'Invité';
     this.currentRoomId = roomId.toUpperCase().trim();
 
+    this.callbacks.onConnectionStatus?.('connecting', 'Connexion au serveur...');
+
     return new Promise((resolve, reject) => {
       try {
-        const peer = new Peer({ debug: 1 });
+        const peer = new Peer(PEER_CONFIG);
         this.peer = peer;
 
         peer.on('open', (id) => {
           this.myPeerId = id;
+          this.startHeartbeat();
+          this.connectToHostWithRetry(this.currentRoomId, 1, 4, resolve, reject);
+        });
 
-          const conn = peer.connect(this.currentRoomId, {
-            reliable: true,
-            metadata: { name: this.myName },
-          });
-
-          this.hostConnection = conn;
-
-          conn.on('open', () => {
-            // Handshake will be received via SYNC_LOBBY
-          });
-
-          conn.on('data', (raw: unknown) => {
-            const msg = raw as NetworkMessage;
-            this.handleClientMessage(msg, resolve);
-          });
-
-          conn.on('close', () => {
-            this.callbacks.onPeerDisconnect?.('host');
-          });
-
-          conn.on('error', (err) => {
-            this.callbacks.onError?.(`Erreur hôte : ${err.message}`);
-            reject(err);
-          });
+        peer.on('disconnected', () => {
+          console.warn('[Multiplayer] Client disconnected from signaling, auto-reconnecting...');
+          if (this.currentRoomId && !this.peer?.destroyed) {
+            setTimeout(() => {
+              if (this.peer?.disconnected && !this.peer?.destroyed) {
+                try {
+                  this.peer.reconnect();
+                } catch {
+                  // ignore
+                }
+              }
+            }, 500);
+          }
         });
 
         peer.on('error', (err) => {
-          this.callbacks.onError?.(`Impossible de rejoindre le salon : ${err.message}`);
-          reject(err);
+          console.error('[Multiplayer] Client Peer error:', err);
+          // If peer-unavailable during connect, connectToHostWithRetry handles it
+          if (err.type !== 'peer-unavailable') {
+            this.callbacks.onError?.(`Erreur de salon : ${err.message}`);
+            this.callbacks.onConnectionStatus?.('error', err.message);
+          }
         });
       } catch (err) {
         reject(err);
+      }
+    });
+  }
+
+  private connectToHostWithRetry(
+    targetHostId: string,
+    attempt: number,
+    maxAttempts: number,
+    resolve: (id: PlayerId) => void,
+    reject: (err: unknown) => void
+  ) {
+    if (!this.peer || this.peer.destroyed) return;
+
+    this.callbacks.onConnectionStatus?.(
+      'connecting',
+      attempt > 1
+        ? `Recherche du créateur... (tentative ${attempt}/${maxAttempts})`
+        : 'Connexion au salon...'
+    );
+
+    let isConnected = false;
+    const conn = this.peer.connect(targetHostId, {
+      reliable: true,
+      metadata: { name: this.myName },
+    });
+
+    this.hostConnection = conn;
+
+    const connectionTimeout = window.setTimeout(() => {
+      if (!isConnected && attempt < maxAttempts) {
+        console.log(`[Multiplayer] Attempt ${attempt} timed out. Retrying in 1.5s...`);
+        try {
+          conn.close();
+        } catch {
+          // ignore
+        }
+        setTimeout(() => {
+          this.connectToHostWithRetry(targetHostId, attempt + 1, maxAttempts, resolve, reject);
+        }, 1500);
+      } else if (!isConnected) {
+        const errorMsg = "Impossible de joindre le créateur du salon. Assurez-vous que l'hôte est bien revenu sur la page du jeu.";
+        this.callbacks.onError?.(errorMsg);
+        this.callbacks.onConnectionStatus?.('error', errorMsg);
+        reject(new Error(errorMsg));
+      }
+    }, 4500);
+
+    conn.on('open', () => {
+      isConnected = true;
+      clearTimeout(connectionTimeout);
+      this.callbacks.onConnectionStatus?.('connected', 'Connecté au salon !');
+    });
+
+    conn.on('data', (raw: unknown) => {
+      const msg = raw as NetworkMessage;
+      this.handleClientMessage(msg, resolve);
+    });
+
+    conn.on('close', () => {
+      this.callbacks.onPeerDisconnect?.('host');
+    });
+
+    conn.on('error', (err) => {
+      console.warn(`[Multiplayer] Conn error on attempt ${attempt}:`, err);
+      if (!isConnected && attempt < maxAttempts) {
+        clearTimeout(connectionTimeout);
+        setTimeout(() => {
+          this.connectToHostWithRetry(targetHostId, attempt + 1, maxAttempts, resolve, reject);
+        }, 1500);
       }
     });
   }
@@ -187,13 +348,17 @@ export class MultiplayerService {
       const clientName = (conn.metadata as { name?: string })?.name || `Joueur ${nextPlayerNum}`;
       this.connections.set(conn.peer, conn);
 
-      this.peers.push({
-        peerId: conn.peer,
-        name: clientName,
-        playerNumber: nextPlayerNum,
-        isHost: false,
-        isReady: true,
-      });
+      // Check if already in list
+      const existing = this.peers.find((p) => p.peerId === conn.peer);
+      if (!existing) {
+        this.peers.push({
+          peerId: conn.peer,
+          name: clientName,
+          playerNumber: nextPlayerNum,
+          isHost: false,
+          isReady: true,
+        });
+      }
 
       this.broadcastLobbySync();
     });
@@ -217,7 +382,7 @@ export class MultiplayerService {
 
   private handleHostReceivedMessage(_fromPeerId: string, msg: NetworkMessage) {
     if (msg.type === 'COIN_FLIP_CHOICE') {
-      // Guest chose side if applicable
+      // Guest choice
     } else if (msg.type === 'GAME_MOVE') {
       this.broadcast(msg);
       this.callbacks.onRemoteMove?.(msg.playerId, msg.to);
@@ -250,10 +415,10 @@ export class MultiplayerService {
       this.callbacks.onLobbyUpdate?.(this.peers, this.playerCount, this.timerSetting, this.coinFlip);
     } else if (msg.type === 'COIN_FLIP_TRIGGER') {
       this.coinFlip = {
-        ...this.coinFlip,
+        hostChoice: this.coinFlip.hostChoice,
         result: msg.result,
         winnerPlayerId: msg.winnerPlayerId,
-        flipping: true,
+        flipping: false,
       };
       this.callbacks.onCoinFlipUpdate?.(this.coinFlip);
     } else if (msg.type === 'START_GAME') {
@@ -387,14 +552,29 @@ export class MultiplayerService {
   }
 
   public destroy() {
-    this.connections.forEach((c) => c.close());
+    this.stopHeartbeat();
+    this.connections.forEach((c) => {
+      try {
+        c.close();
+      } catch {
+        // ignore
+      }
+    });
     this.connections.clear();
     if (this.hostConnection) {
-      this.hostConnection.close();
+      try {
+        this.hostConnection.close();
+      } catch {
+        // ignore
+      }
       this.hostConnection = null;
     }
     if (this.peer) {
-      this.peer.destroy();
+      try {
+        this.peer.destroy();
+      } catch {
+        // ignore
+      }
       this.peer = null;
     }
     this.peers = [];
