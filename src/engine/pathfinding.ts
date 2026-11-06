@@ -1,17 +1,17 @@
-import type { Position, Wall, WallOrientation } from '../types/game';
-import { BOARD_SIZE } from './coordinates';
+import type { Position, Wall, WallOrientation, TargetGoal, Player } from '../types/game';
+import { BOARD_SIZE, hasPlayerReachedGoal } from './coordinates';
 import { checkWallGeometry, isMoveBlockedByWall, type WallValidationResult } from './rules';
 
 /**
- * Checks if a player has at least one valid unblocked path to reach their target row
+ * Checks if a player has at least one valid unblocked path to reach their target goal (row or column)
  * using Breadth-First Search (BFS).
  */
-export function hasPathToTarget(
+export function hasPathToGoal(
   start: Position,
-  targetRow: number,
+  goal: TargetGoal,
   walls: Wall[]
 ): boolean {
-  if (start.y === targetRow) return true;
+  if (hasPlayerReachedGoal(start, goal)) return true;
 
   const visited = Array.from({ length: BOARD_SIZE }, () =>
     new Array<boolean>(BOARD_SIZE).fill(false)
@@ -29,7 +29,7 @@ export function hasPathToTarget(
   while (queue.length > 0) {
     const current = queue.shift()!;
 
-    if (current.y === targetRow) {
+    if (hasPlayerReachedGoal(current, goal)) {
       return true;
     }
 
@@ -60,14 +60,14 @@ export function hasPathToTarget(
 }
 
 /**
- * Returns shortest path distance from start to target row, or -1 if unreachable.
+ * Returns shortest path distance from start to target goal, or -1 if unreachable.
  */
-export function getShortestPathDistance(
+export function getShortestPathDistanceToGoal(
   start: Position,
-  targetRow: number,
+  goal: TargetGoal,
   walls: Wall[]
 ): number {
-  if (start.y === targetRow) return 0;
+  if (hasPlayerReachedGoal(start, goal)) return 0;
 
   const visited = Array.from({ length: BOARD_SIZE }, () =>
     new Array<number>(BOARD_SIZE).fill(-1)
@@ -86,7 +86,7 @@ export function getShortestPathDistance(
     const current = queue.shift()!;
     const currentDist = visited[current.y][current.x];
 
-    if (current.y === targetRow) {
+    if (hasPlayerReachedGoal(current, goal)) {
       return currentDist;
     }
 
@@ -114,20 +114,17 @@ export function getShortestPathDistance(
 }
 
 /**
- * Golden Rule Validation:
+ * Golden Rule Validation for N Players (2 to 4 Players):
  * 1. Checks geometric placement (overlap, intersection collision, boundaries).
- * 2. Simulates the wall placement and runs BFS pathfinding for both players.
- * If either player's path to their goal row is completely cut off, the wall is rejected.
+ * 2. Simulates the wall placement and runs BFS pathfinding for ALL active players.
+ * If ANY player's path to their goal is completely cut off, the wall is rejected.
  */
 export function validateWallPlacement(
   x: number,
   y: number,
   orientation: WallOrientation,
   existingWalls: Wall[],
-  p1Pos: Position,
-  p2Pos: Position,
-  p1TargetRow: number = 0,
-  p2TargetRow: number = 8
+  players: Player[]
 ): WallValidationResult {
   // Step 1: Geometry check
   const geomResult = checkWallGeometry(x, y, orientation, existingWalls);
@@ -135,31 +132,25 @@ export function validateWallPlacement(
     return geomResult;
   }
 
-  // Step 2: Golden Rule (Path obstruction check via BFS)
+  // Step 2: Golden Rule (Path obstruction check via BFS for all players)
   const candidateWall: Wall = {
     id: 'simulation_wall',
     x,
     y,
     orientation,
-    placedBy: 1,
+    placedBy: players[0]?.id || 1,
   };
 
   const simulatedWalls = [...existingWalls, candidateWall];
 
-  const p1HasPath = hasPathToTarget(p1Pos, p1TargetRow, simulatedWalls);
-  if (!p1HasPath) {
-    return {
-      isValid: false,
-      reason: "Règle d'or : Ce mur enferme le Joueur 1 sans aucun chemin vers son but !",
-    };
-  }
-
-  const p2HasPath = hasPathToTarget(p2Pos, p2TargetRow, simulatedWalls);
-  if (!p2HasPath) {
-    return {
-      isValid: false,
-      reason: "Règle d'or : Ce mur enferme le Joueur 2 sans aucun chemin vers son but !",
-    };
+  for (const player of players) {
+    const hasPath = hasPathToGoal(player.position, player.targetGoal, simulatedWalls);
+    if (!hasPath) {
+      return {
+        isValid: false,
+        reason: `Règle d'or : Ce mur enferme ${player.name} sans aucun chemin vers son but !`,
+      };
+    }
   }
 
   return { isValid: true };

@@ -1,5 +1,7 @@
 import React from 'react';
 import type { PlayerId, WallOrientation } from '../types/game';
+import type { ThemeConfig } from '../types/themes';
+import { THEMES } from '../types/themes';
 
 interface WallProps {
   x: number; // 0 to 7
@@ -8,6 +10,7 @@ interface WallProps {
   placedBy?: PlayerId;
   isPreview?: boolean;
   isValidPreview?: boolean;
+  theme?: ThemeConfig;
   onClick?: () => void;
   cellSize: number;
   grooveSize: number;
@@ -21,14 +24,15 @@ export const Wall: React.FC<WallProps> = ({
   placedBy,
   isPreview = false,
   isValidPreview = true,
+  theme = THEMES.wood,
   onClick,
   cellSize,
   grooveSize,
   padding,
 }) => {
   const step = cellSize + grooveSize;
-  const wallThickness = grooveSize; // e.g. 12px
-  const wallLength = cellSize * 2 + grooveSize; // spans 2 cells + 1 groove = 120px
+  const wallThickness = grooveSize;
+  const wallLength = cellSize * 2 + grooveSize;
   const radius = 4;
 
   let pixelX: number;
@@ -114,10 +118,8 @@ export const Wall: React.FC<WallProps> = ({
     );
   }
 
-  // Real placed wall
-  const isP1 = placedBy === 1;
-  const primaryColor = isP1 ? '#d97706' : '#b45309'; // Rich polished teak wood with warm amber/brown hues
-  const accentRim = isP1 ? '#38bdf8' : '#f97316'; // Player glow rim
+  // Accent rim based on which player placed it
+  const accentRim = placedBy === 1 ? theme.accentP1 : placedBy === 2 ? theme.accentP2 : placedBy === 3 ? theme.accentP3 : theme.accentP4;
 
   return (
     <g
@@ -132,7 +134,7 @@ export const Wall: React.FC<WallProps> = ({
         height={height}
         rx={radius}
         ry={radius}
-        fill="rgba(0,0,0,0.4)"
+        fill={theme.wallShadow}
       />
 
       {/* Main Wall Body */}
@@ -143,8 +145,8 @@ export const Wall: React.FC<WallProps> = ({
         height={height}
         rx={radius}
         ry={radius}
-        fill={primaryColor}
-        stroke="#451a03"
+        fill={theme.wallDefault}
+        stroke={theme.wallStroke}
         strokeWidth="1"
       />
 
@@ -156,10 +158,10 @@ export const Wall: React.FC<WallProps> = ({
         height={Math.max(2, height * 0.35)}
         rx={radius - 1}
         ry={radius - 1}
-        fill="rgba(255, 255, 255, 0.22)"
+        fill="rgba(255, 255, 255, 0.25)"
       />
 
-      {/* Player Ownership Center Dot/Accent */}
+      {/* Player Ownership Center Dot */}
       <circle
         cx={pixelX + width / 2}
         cy={pixelY + height / 2}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { computeAIMove } from '../ai';
+import { TARGET_GOALS } from '../coordinates';
 import type { Player } from '../../types/game';
 
 describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
@@ -10,7 +11,7 @@ describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
     wallsRemaining: 10,
     color: '#38bdf8',
     glowColor: 'rgba(56, 189, 248, 0.4)',
-    targetRow: 0,
+    targetGoal: TARGET_GOALS[1],
   };
 
   const baseAI: Player = {
@@ -20,7 +21,7 @@ describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
     wallsRemaining: 10,
     color: '#f97316',
     glowColor: 'rgba(249, 115, 22, 0.4)',
-    targetRow: 8,
+    targetGoal: TARGET_GOALS[2],
     isAI: true,
   };
 
@@ -46,7 +47,7 @@ describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
   it('immediately moves into the target row to win when adjacent', () => {
     const nearWinAI: Player = {
       ...baseAI,
-      position: { x: 2, y: 7 }, // 1 step from targetRow 8! (Human is at 4, 8)
+      position: { x: 2, y: 7 }, // 1 step from targetGoal row 8!
     };
 
     const action = computeAIMove(nearWinAI, baseHuman, [], 'hard');
@@ -59,11 +60,10 @@ describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
   it('difficile AI attempts to block human when human is 1 step from winning', () => {
     const nearWinHuman: Player = {
       ...baseHuman,
-      position: { x: 4, y: 1 }, // 1 step from targetRow 0!
+      position: { x: 4, y: 1 }, // 1 step from targetGoal row 0!
     };
 
     const action = computeAIMove(baseAI, nearWinHuman, [], 'hard');
-    // AI should attempt to place a wall blocking human from stepping onto row 0
     expect(action.type).toBe('wall');
   });
 });

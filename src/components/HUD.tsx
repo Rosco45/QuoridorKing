@@ -1,59 +1,109 @@
 import React from 'react';
-import type { Player, PlayerId, GameMode, AIDifficulty } from '../types/game';
-import { Volume2, VolumeX, RotateCcw, HelpCircle, Trophy, ArrowUp, ArrowDown, Bot, Users, Smartphone, Pause } from 'lucide-react';
+import type { Player, PlayerId, PlayerCount, GameMode, AIDifficulty, BlitzTimerSetting } from '../types/game';
+import type { ThemeConfig } from '../types/themes';
+import { Volume2, VolumeX, RotateCcw, HelpCircle, Trophy, Bot, Users, Globe, Pause, Palette, Timer, ArrowUp, ArrowDown, ArrowRight, ArrowLeft } from 'lucide-react';
 
 interface HUDProps {
   players: Record<PlayerId, Player>;
   activePlayerId: PlayerId;
+  playerCount: PlayerCount;
   turnCount: number;
   isMuted: boolean;
-  p1Distance: number;
-  p2Distance: number;
+  distances: Record<PlayerId, number>;
   gameMode: GameMode;
   aiDifficulty: AIDifficulty;
   isAIThinking: boolean;
+  blitzTimer: BlitzTimerSetting;
+  turnSecondsLeft: number;
+  theme: ThemeConfig;
+  onlineRoomCode?: string | null;
+  onlinePlayerId?: PlayerId | null;
   onToggleMute: () => void;
   onResetGame: () => void;
   onOpenRules: () => void;
   onOpenModeModal: () => void;
-  onOpenQRModal: () => void;
+  onOpenOnlineLobby: () => void;
+  onOpenThemeSettings: () => void;
   onOpenPause: () => void;
 }
 
 export const HUD: React.FC<HUDProps> = ({
   players,
   activePlayerId,
+  playerCount,
   turnCount,
   isMuted,
-  p1Distance,
-  p2Distance,
+  distances,
   gameMode,
   aiDifficulty,
   isAIThinking,
+  blitzTimer,
+  turnSecondsLeft,
+  theme,
+  onlineRoomCode,
+  onlinePlayerId,
   onToggleMute,
   onResetGame,
   onOpenRules,
   onOpenModeModal,
-  onOpenQRModal,
+  onOpenOnlineLobby,
+  onOpenThemeSettings,
   onOpenPause,
 }) => {
-  const p1 = players[1];
-  const p2 = players[2];
+  const maxWalls = playerCount === 4 ? 5 : 10;
 
-  // Helper to render wall reserve gauge
-  const renderWallGauges = (remaining: number, isP1: boolean) => {
+  const playerConfigs: Record<
+    PlayerId,
+    {
+      color: string;
+      label: string;
+      directionIcon: React.ReactNode;
+      borderActive: string;
+      bgActive: string;
+    }
+  > = {
+    1: {
+      color: theme.accentP1,
+      label: gameMode === 'ai' ? 'Vous (Bleu)' : players[1]?.name || 'J1',
+      directionIcon: <ArrowUp className="w-3 h-3" />,
+      borderActive: 'border-sky-500 shadow-[0_0_15px_rgba(56,189,248,0.3)] ring-1 ring-sky-400/50',
+      bgActive: 'bg-sky-950/40',
+    },
+    2: {
+      color: theme.accentP2,
+      label: gameMode === 'ai' ? 'IA King' : players[2]?.name || 'J2',
+      directionIcon: <ArrowDown className="w-3 h-3" />,
+      borderActive: 'border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.3)] ring-1 ring-orange-400/50',
+      bgActive: 'bg-orange-950/40',
+    },
+    3: {
+      color: theme.accentP3,
+      label: players[3]?.name || 'J3',
+      directionIcon: <ArrowRight className="w-3 h-3" />,
+      borderActive: 'border-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)] ring-1 ring-emerald-400/50',
+      bgActive: 'bg-emerald-950/40',
+    },
+    4: {
+      color: theme.accentP4,
+      label: players[4]?.name || 'J4',
+      directionIcon: <ArrowLeft className="w-3 h-3" />,
+      borderActive: 'border-purple-500 shadow-[0_0_15px_rgba(168,85,247,0.3)] ring-1 ring-purple-400/50',
+      bgActive: 'bg-purple-950/40',
+    },
+  };
+
+  const renderWallGauges = (remaining: number, pId: PlayerId) => {
+    const accentColor = playerConfigs[pId].color;
     return (
-      <div className="flex items-center gap-[2.5px] mt-1">
-        {Array.from({ length: 10 }).map((_, i) => (
+      <div className="flex items-center gap-[2px] mt-1">
+        {Array.from({ length: maxWalls }).map((_, i) => (
           <div
-            key={`wall-bar-${i}`}
-            className={`h-3 w-1.5 rounded-sm transition-all duration-200 ${
-              i < remaining
-                ? isP1
-                  ? 'bg-sky-400 shadow-[0_0_4px_rgba(56,189,248,0.6)]'
-                  : 'bg-orange-500 shadow-[0_0_4px_rgba(249,115,22,0.6)]'
-                : 'bg-slate-700/50'
-            }`}
+            key={`wall-bar-${pId}-${i}`}
+            className="h-2.5 flex-1 max-w-[8px] rounded-xs transition-all duration-200"
+            style={{
+              backgroundColor: i < remaining ? accentColor : 'rgba(51, 65, 85, 0.4)',
+              boxShadow: i < remaining ? `0 0 4px ${accentColor}` : 'none',
+            }}
           />
         ))}
       </div>
@@ -66,9 +116,13 @@ export const HUD: React.FC<HUDProps> = ({
     hard: { label: 'Difficile', color: 'text-rose-300 bg-rose-500/20 border-rose-500/40' },
   };
 
+  const activePlayerList = (
+    playerCount === 4 ? ([1, 2, 3, 4] as PlayerId[]) : ([1, 2] as PlayerId[])
+  ).filter((id) => players[id]);
+
   return (
-    <header className="w-full max-w-xl mx-auto px-3 pt-2 pb-1 flex flex-col gap-2 select-none">
-      {/* Top Bar: Title, Mode Selector, and Quick Action Buttons */}
+    <header className="w-full max-w-2xl mx-auto px-2 pt-1.5 pb-1 flex flex-col gap-1.5 select-none">
+      {/* Top Header Row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <div className="bg-amber-500/20 p-1 rounded-lg border border-amber-500/30">
@@ -82,47 +136,67 @@ export const HUD: React.FC<HUDProps> = ({
           </span>
         </div>
 
-        {/* Center Mode Button */}
-        <button
-          onClick={onOpenModeModal}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold transition-all border shadow-sm active:scale-95 ${
-            gameMode === 'ai'
-              ? `${difficultyLabels[aiDifficulty].color} border`
-              : 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
-          }`}
-          title="Changer de mode de jeu et de difficulté"
-        >
-          {gameMode === 'ai' ? (
-            <>
-              <Bot className="w-3.5 h-3.5" />
-              <span>IA : {difficultyLabels[aiDifficulty].label}</span>
-            </>
-          ) : (
-            <>
-              <Users className="w-3.5 h-3.5" />
-              <span>2 Joueurs</span>
-            </>
+        {/* Center Mode / Room Badge */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onOpenModeModal}
+            className={`flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold transition-all border shadow-sm active:scale-95 ${
+              gameMode === 'ai'
+                ? `${difficultyLabels[aiDifficulty].color} border`
+                : gameMode === 'online'
+                ? 'bg-purple-950/60 text-purple-300 border-purple-500/50'
+                : 'bg-slate-800 hover:bg-slate-700 text-sky-300 border-slate-700'
+            }`}
+            title="Changer de mode de jeu"
+          >
+            {gameMode === 'ai' ? (
+              <>
+                <Bot className="w-3.5 h-3.5" />
+                <span>IA : {difficultyLabels[aiDifficulty].label}</span>
+              </>
+            ) : gameMode === 'online' ? (
+              <>
+                <Globe className="w-3.5 h-3.5" />
+                <span>En Ligne ({onlineRoomCode || 'Lobby'})</span>
+              </>
+            ) : (
+              <>
+                <Users className="w-3.5 h-3.5" />
+                <span>{playerCount} Joueurs</span>
+              </>
+            )}
+            <span className="text-[10px] opacity-60">▾</span>
+          </button>
+
+          {gameMode !== 'online' && (
+            <button
+              onClick={onOpenOnlineLobby}
+              className="hidden sm:flex items-center gap-1 px-2 py-1 rounded-full text-xs font-bold bg-purple-900/40 hover:bg-purple-900/60 text-purple-300 border border-purple-500/40 active:scale-95 transition-all"
+              title="Jouer en ligne avec un ami (P2P)"
+            >
+              <Globe className="w-3 h-3 text-purple-400" />
+              <span>En ligne</span>
+            </button>
           )}
-          <span className="text-[10px] opacity-60">▾</span>
-        </button>
+        </div>
 
         {/* Action icons */}
         <div className="flex items-center gap-1">
           <button
+            onClick={onOpenThemeSettings}
+            className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-amber-300 active:scale-95 transition-all border border-slate-700/60"
+            title="Thèmes visuels et Haptique"
+            aria-label="Thèmes et Réglages"
+          >
+            <Palette className="w-4 h-4 text-amber-400" />
+          </button>
+          <button
             onClick={onOpenPause}
             className="p-1.5 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 active:scale-95 transition-all border border-amber-500/30"
-            title="Mettre en pause la partie"
+            title="Pause"
             aria-label="Pause"
           >
             <Pause className="w-4 h-4 fill-current" />
-          </button>
-          <button
-            onClick={onOpenQRModal}
-            className="p-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 active:scale-95 transition-all border border-emerald-500/30"
-            title="Ouvrir sur mobile (QR Code)"
-            aria-label="Ouvrir sur mobile"
-          >
-            <Smartphone className="w-4 h-4" />
           </button>
           <button
             onClick={onToggleMute}
@@ -136,99 +210,122 @@ export const HUD: React.FC<HUDProps> = ({
             onClick={onOpenRules}
             className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 active:scale-95 transition-all border border-slate-700/60"
             title="Règles du jeu"
-            aria-label="Règles du jeu"
+            aria-label="Règles"
           >
             <HelpCircle className="w-4 h-4 text-sky-400" />
           </button>
           <button
             onClick={onResetGame}
             className="p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-700 text-slate-300 active:scale-95 transition-all border border-slate-700/60"
-            title="Recommencer la partie"
-            aria-label="Recommencer la partie"
+            title="Recommencer"
+            aria-label="Recommencer"
           >
             <RotateCcw className="w-4 h-4 text-slate-300" />
           </button>
         </div>
       </div>
 
-      {/* Players Battle Cards */}
-      <div className="grid grid-cols-2 gap-2">
-        {/* Player 1 Card (Cyan) */}
-        <div
-          className={`relative p-2 rounded-xl transition-all duration-300 border ${
-            activePlayerId === 1
-              ? 'bg-sky-950/40 border-sky-500 shadow-[0_0_15px_rgba(56,189,248,0.25)] ring-1 ring-sky-400/50'
-              : 'bg-slate-900/60 border-slate-800 opacity-70'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3.5 h-3.5 rounded-full bg-sky-400 shadow-[0_0_8px_#38bdf8] flex items-center justify-center font-bold text-[9px] text-slate-950">
-                1
-              </div>
-              <span className="font-bold text-xs text-sky-200 truncate">
-                {gameMode === 'ai' ? 'Vous (Bleu)' : p1.name}
-              </span>
-            </div>
-            {activePlayerId === 1 && (
-              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 animate-pulse">
-                Actif
-              </span>
-            )}
-          </div>
+      {/* Players Cards Grid (2 cols for 2 players, 4 cols or 2x2 for 4 players) */}
+      <div
+        className={`grid gap-1.5 ${
+          playerCount === 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'
+        }`}
+      >
+        {activePlayerList.map((pId) => {
+          const p = players[pId];
+          const isActive = activePlayerId === pId;
+          const config = playerConfigs[pId];
+          const dist = distances[pId] ?? -1;
+          const isMyOnlineTurn = gameMode === 'online' && onlinePlayerId === pId;
 
-          <div className="flex items-center justify-between mt-1 text-[11px] text-slate-300">
-            <span>Murs: <strong>{p1.wallsRemaining}</strong></span>
-            <span className="flex items-center gap-0.5 text-sky-400 text-[10px]">
-              <ArrowUp className="w-3 h-3" />
-              {p1Distance >= 0 ? `${p1Distance} pas` : 'Bloqué'}
-            </span>
-          </div>
+          return (
+            <div
+              key={`player-card-${pId}`}
+              className={`relative p-2 rounded-xl transition-all duration-300 border ${
+                isActive
+                  ? `${config.bgActive} ${config.borderActive}`
+                  : 'bg-slate-900/60 border-slate-800 opacity-70'
+              }`}
+            >
+              {/* Header inside Card */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <div
+                    className="w-4 h-4 rounded-full flex items-center justify-center font-black text-[9px] text-slate-950 shrink-0"
+                    style={{
+                      backgroundColor: config.color,
+                      boxShadow: `0 0 6px ${config.color}`,
+                    }}
+                  >
+                    {pId}
+                  </div>
+                  <span className="font-bold text-xs truncate text-slate-100">
+                    {p.name}
+                    {isMyOnlineTurn && <span className="text-[10px] text-sky-300 ml-1">(Vous)</span>}
+                  </span>
+                </div>
 
-          {renderWallGauges(p1.wallsRemaining, true)}
-        </div>
-
-        {/* Player 2 Card (Orange - Human or AI) */}
-        <div
-          className={`relative p-2 rounded-xl transition-all duration-300 border ${
-            activePlayerId === 2
-              ? 'bg-orange-950/40 border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.25)] ring-1 ring-orange-400/50'
-              : 'bg-slate-900/60 border-slate-800 opacity-70'
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3.5 h-3.5 rounded-full bg-orange-500 shadow-[0_0_8px_#f97316] flex items-center justify-center font-bold text-[9px] text-slate-950">
-                2
-              </div>
-              <span className="font-bold text-xs text-orange-200 truncate flex items-center gap-1">
-                {gameMode === 'ai' ? (
-                  <>
-                    <Bot className="w-3.5 h-3.5 text-orange-400" />
-                    <span>IA King</span>
-                  </>
-                ) : (
-                  p2.name
+                {isActive && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {blitzTimer > 0 && (
+                      <span
+                        className={`flex items-center gap-0.5 text-[10px] font-black px-1.5 py-0.2 rounded ${
+                          turnSecondsLeft <= 5
+                            ? 'bg-rose-500/30 text-rose-300 border border-rose-500/50 animate-pulse'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                        }`}
+                      >
+                        <Timer className="w-2.5 h-2.5" />
+                        <span>{turnSecondsLeft}s</span>
+                      </span>
+                    )}
+                    <span
+                      className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded border animate-pulse"
+                      style={{
+                        backgroundColor: `${config.color}20`,
+                        color: config.color,
+                        borderColor: `${config.color}50`,
+                      }}
+                    >
+                      {gameMode === 'ai' && pId === 2 && isAIThinking ? 'IA...' : 'Tour'}
+                    </span>
+                  </div>
                 )}
-              </span>
+              </div>
+
+              {/* Stats: Walls & Distance */}
+              <div className="flex items-center justify-between mt-1 text-[11px] text-slate-300">
+                <span>
+                  Murs: <strong>{p.wallsRemaining}</strong>
+                </span>
+                <span
+                  className="flex items-center gap-0.5 text-[10px] font-semibold"
+                  style={{ color: config.color }}
+                >
+                  {config.directionIcon}
+                  {dist >= 0 ? `${dist} pas` : 'Bloqué'}
+                </span>
+              </div>
+
+              {/* Blitz Timer progress bar if active */}
+              {isActive && blitzTimer > 0 && (
+                <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden mt-1">
+                  <div
+                    className={`h-full transition-all duration-300 ${
+                      turnSecondsLeft <= 5 ? 'bg-rose-500' : 'bg-amber-400'
+                    }`}
+                    style={{
+                      width: `${Math.max(0, Math.min(100, (turnSecondsLeft / blitzTimer) * 100))}%`,
+                    }}
+                  />
+                </div>
+              )}
+
+              {/* Wall gauges */}
+              {renderWallGauges(p.wallsRemaining, pId)}
             </div>
-            {activePlayerId === 2 && (
-              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded bg-orange-500/20 text-orange-300 border border-orange-500/40 animate-pulse">
-                {isAIThinking ? 'Calcul...' : 'Actif'}
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center justify-between mt-1 text-[11px] text-slate-300">
-            <span>Murs: <strong>{p2.wallsRemaining}</strong></span>
-            <span className="flex items-center gap-0.5 text-orange-400 text-[10px]">
-              <ArrowDown className="w-3 h-3" />
-              {p2Distance >= 0 ? `${p2Distance} pas` : 'Bloqué'}
-            </span>
-          </div>
-
-          {renderWallGauges(p2.wallsRemaining, false)}
-        </div>
+          );
+        })}
       </div>
     </header>
   );

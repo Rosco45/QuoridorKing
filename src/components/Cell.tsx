@@ -1,5 +1,7 @@
 import React from 'react';
 import type { Player } from '../types/game';
+import type { ThemeConfig } from '../types/themes';
+import { THEMES } from '../types/themes';
 
 interface CellProps {
   x: number;
@@ -12,6 +14,9 @@ interface CellProps {
   isValidMove?: boolean;
   isP1GoalRow?: boolean;
   isP2GoalRow?: boolean;
+  isP3GoalCol?: boolean;
+  isP4GoalCol?: boolean;
+  theme?: ThemeConfig;
   onSelect: (x: number, y: number) => void;
 }
 
@@ -26,12 +31,26 @@ export const Cell: React.FC<CellProps> = ({
   isValidMove,
   isP1GoalRow,
   isP2GoalRow,
+  isP3GoalCol,
+  isP4GoalCol,
+  theme = THEMES.wood,
   onSelect,
 }) => {
   const radius = 8;
   const centerX = pixelX + size / 2;
   const centerY = pixelY + size / 2;
   const pawnRadius = size * 0.36;
+
+  // Colors per player ID
+  const playerAccent = playerOnCell
+    ? playerOnCell.id === 1
+      ? theme.accentP1
+      : playerOnCell.id === 2
+      ? theme.accentP2
+      : playerOnCell.id === 3
+      ? theme.accentP3
+      : theme.accentP4
+    : '#fff';
 
   return (
     <g
@@ -49,15 +68,10 @@ export const Cell: React.FC<CellProps> = ({
         height={size}
         rx={radius}
         ry={radius}
-        className={`transition-colors duration-150 ${
-          isValidMove
-            ? 'fill-[#2d3a35] stroke-emerald-400/80 stroke-2'
-            : isP1GoalRow
-            ? 'fill-[#1e2330] stroke-sky-500/30 stroke-1'
-            : isP2GoalRow
-            ? 'fill-[#281e22] stroke-amber-500/30 stroke-1'
-            : 'fill-[#1e212b] stroke-slate-700/40 stroke-1'
-        }`}
+        fill={isValidMove ? theme.cellValidMove : theme.cellDefault}
+        stroke={isValidMove ? '#10b981' : theme.cellBorder}
+        strokeWidth={isValidMove ? 2 : 1}
+        className="transition-colors duration-150"
       />
 
       {/* Subtle Inner Bevel / Highlight */}
@@ -69,21 +83,21 @@ export const Cell: React.FC<CellProps> = ({
         rx={radius - 2}
         ry={radius - 2}
         fill="none"
-        stroke="rgba(255, 255, 255, 0.04)"
+        stroke="rgba(255, 255, 255, 0.05)"
         strokeWidth="1"
       />
 
-      {/* Goal Line Accent dots or bar indicators */}
+      {/* Goal Line Accent Bars */}
       {isP1GoalRow && (
         <line
           x1={pixelX + 6}
           y1={pixelY + 3}
           x2={pixelX + size - 6}
           y2={pixelY + 3}
-          stroke="#38bdf8"
+          stroke={theme.accentP1}
           strokeWidth="2.5"
           strokeLinecap="round"
-          opacity={0.65}
+          opacity={0.7}
         />
       )}
       {isP2GoalRow && (
@@ -92,14 +106,38 @@ export const Cell: React.FC<CellProps> = ({
           y1={pixelY + size - 3}
           x2={pixelX + size - 6}
           y2={pixelY + size - 3}
-          stroke="#f97316"
+          stroke={theme.accentP2}
           strokeWidth="2.5"
           strokeLinecap="round"
-          opacity={0.65}
+          opacity={0.7}
+        />
+      )}
+      {isP3GoalCol && (
+        <line
+          x1={pixelX + size - 3}
+          y1={pixelY + 6}
+          x2={pixelX + size - 3}
+          y2={pixelY + size - 6}
+          stroke={theme.accentP3}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          opacity={0.7}
+        />
+      )}
+      {isP4GoalCol && (
+        <line
+          x1={pixelX + 3}
+          y1={pixelY + 6}
+          x2={pixelX + 3}
+          y2={pixelY + size - 6}
+          stroke={theme.accentP4}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          opacity={0.7}
         />
       )}
 
-      {/* Valid Move Indicator (pulsing ring & target circle) */}
+      {/* Valid Move Indicator (pulsing target ring & dot) */}
       {isValidMove && (
         <g className="pointer-events-none">
           <circle
@@ -135,23 +173,23 @@ export const Cell: React.FC<CellProps> = ({
         </g>
       )}
 
-      {/* Player Pawn */}
+      {/* Player Pawn (supports P1, P2, P3, P4) */}
       {playerOnCell && (
         <g
           className={`player-pawn transition-transform duration-200 ${
             isActivePlayerPawn ? 'filter drop-shadow-[0_0_12px_rgba(255,255,255,0.4)]' : ''
           }`}
         >
-          {/* Active Player Halo/Glow */}
+          {/* Active Player Pulsing Glow Halo */}
           {isActivePlayerPawn && (
             <circle
               cx={centerX}
               cy={centerY}
               r={pawnRadius + 6}
               fill="none"
-              stroke={playerOnCell.id === 1 ? '#38bdf8' : '#f97316'}
+              stroke={playerAccent}
               strokeWidth="2.5"
-              opacity="0.75"
+              opacity="0.8"
             >
               <animate
                 attributeName="r"
@@ -177,14 +215,15 @@ export const Cell: React.FC<CellProps> = ({
             fill="rgba(0, 0, 0, 0.55)"
           />
 
-          {/* Pawn Outer Ring */}
+          {/* Pawn Outer Base */}
           <circle
             cx={centerX}
             cy={centerY}
             r={pawnRadius}
-            fill={playerOnCell.id === 1 ? '#0284c7' : '#c2410c'}
-            stroke={playerOnCell.id === 1 ? '#bae6fd' : '#fed7aa'}
-            strokeWidth="2"
+            fill={playerAccent}
+            stroke="#ffffff"
+            strokeWidth="1.5"
+            strokeOpacity="0.4"
           />
 
           {/* Pawn Gradient Core */}
@@ -192,37 +231,30 @@ export const Cell: React.FC<CellProps> = ({
             cx={centerX - pawnRadius * 0.2}
             cy={centerY - pawnRadius * 0.2}
             r={pawnRadius * 0.72}
-            fill={playerOnCell.id === 1 ? '#38bdf8' : '#fb923c'}
-            opacity="0.9"
+            fill="#0f172a"
+            opacity="0.85"
           />
 
-          {/* Crown / Number Emblem */}
-          <g transform={`translate(${centerX - 9}, ${centerY - 9})`}>
-            {playerOnCell.id === 1 ? (
-              // Player 1 Crown / Crest (Cyan)
-              <path
-                d="M3 13h12l-1-7-3 4-2-6-2 6-3-4z"
-                fill="#ffffff"
-                stroke="#0369a1"
-                strokeWidth="0.8"
-              />
-            ) : (
-              // Player 2 Crown / Crest (Orange)
-              <path
-                d="M3 13h12l-1-7-3 4-2-6-2 6-3-4z"
-                fill="#ffffff"
-                stroke="#9a3412"
-                strokeWidth="0.8"
-              />
-            )}
-          </g>
+          {/* Player Number Badge */}
+          <text
+            x={centerX}
+            y={centerY + 1}
+            fill="#ffffff"
+            fontSize="12"
+            fontWeight="900"
+            textAnchor="middle"
+            dominantBaseline="middle"
+            className="pointer-events-none select-none font-mono"
+          >
+            {playerOnCell.id}
+          </text>
 
-          {/* Highlight Specular Reflection */}
+          {/* Specular Highlight */}
           <ellipse
             cx={centerX - pawnRadius * 0.35}
             cy={centerY - pawnRadius * 0.35}
-            rx={pawnRadius * 0.28}
-            ry={pawnRadius * 0.16}
+            rx={pawnRadius * 0.25}
+            ry={pawnRadius * 0.14}
             fill="rgba(255, 255, 255, 0.6)"
             transform={`rotate(-30 ${centerX - pawnRadius * 0.35} ${centerY - pawnRadius * 0.35})`}
           />

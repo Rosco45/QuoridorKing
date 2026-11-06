@@ -3,19 +3,30 @@ import type {
   ActionMode,
   Player,
   PlayerId,
+  PlayerCount,
   Position,
   Wall,
   WallOrientation,
   WallPreview,
-  GameHistoryEntry,
   GameMode,
   AIDifficulty,
+  BlitzTimerSetting,
+  ThemeId,
+  ReplayStep,
 } from './types/game';
-import { INITIAL_POSITIONS, TARGET_ROWS, MAX_WALLS_PER_PLAYER } from './engine/coordinates';
+import { THEMES } from './types/themes';
+import {
+  createInitialPlayers,
+  hasPlayerReachedGoal,
+  getNextPlayerId,
+} from './engine/coordinates';
 import { getValidPawnMoves } from './engine/rules';
-import { validateWallPlacement, getShortestPathDistance } from './engine/pathfinding';
+import { validateWallPlacement, getShortestPathDistanceToGoal } from './engine/pathfinding';
 import { computeAIMove } from './engine/ai';
 import { soundManager } from './engine/sounds';
+import { hapticManager } from './engine/haptics';
+import { multiplayerService } from './engine/multiplayer';
+
 import { HUD } from './components/HUD';
 import { Board } from './components/Board';
 import { Controls } from './components/Controls';
@@ -25,14 +36,18 @@ import { VictoryModal } from './components/VictoryModal';
 import { ModeModal } from './components/ModeModal';
 import { MobileQRModal } from './components/MobileQRModal';
 import { PauseModal } from './components/PauseModal';
+import { ThemeSettingsModal } from './components/ThemeSettingsModal';
+import { OnlineLobbyModal } from './components/OnlineLobbyModal';
+import { ReplayModal } from './components/ReplayModal';
 
 interface SavedGameData {
   players: Record<PlayerId, Player>;
   activePlayerId: PlayerId;
+  playerCount: PlayerCount;
   walls: Wall[];
   turnCount: number;
   winner: PlayerId | null;
-  history: GameHistoryEntry[];
+  replaySteps: ReplayStep[];
   gameMode: GameMode;
   aiDifficulty: AIDifficulty;
   elapsedSeconds: number;
@@ -56,7 +71,47 @@ const getInitialSavedGame = (): SavedGameData | null => {
 export const App: React.FC = () => {
   const initialSaved = useMemo(() => getInitialSavedGame(), []);
 
+  // --- Themes & Haptics ---
+  const [themeId, setThemeId] = useState<ThemeId>(() => {
+    try {
+      const saved = localStorage.getItem('quoridor_theme') as ThemeId;
+      if (saved && THEMES[saved]) return saved;
+    } catch {
+      // ignore
+    }
+    return 'wood';
+  });
+
+  const [hapticsEnabled, setHapticsEnabled] = useState<boolean>(() => {
+    return hapticManager.isEnabled();
+  });
+
+  const currentTheme = THEMES[themeId] || THEMES.wood;
+
+  const handleSelectTheme = useCallback((newTheme: ThemeId) => {
+    setThemeId(newTheme);
+    try {
+      localStorage.setItem('quoridor_theme', newTheme);
+    } catch {
+      // ignore
+    }
+    hapticManager.vibrateTap();
+  }, []);
+
+  const handleToggleHaptics = useCallback(() => {
+    const updated = hapticManager.toggle();
+    setHapticsEnabled(updated);
+    if (updated) {
+      hapticManager.vibrateTap();
+    }
+  }, []);
+
   // --- Game Settings ---
+  const [playerCount, setPlayerCount] = useState<PlayerCount>(() => {
+    if (initialSaved?.playerCount) return initialSaved.playerCount;
+    return 2;
+  });
+
   const [gameMode, setGameMode] = useState<GameMode>(() => {
     if (initialSaved?.gameMode) return initialSaved.gameMode;
     try {
@@ -77,30 +132,25 @@ export const App: React.FC = () => {
     }
   });
 
+  const [blitzTimer, setBlitzTimer] = useState<BlitzTimerSetting>(() => {
+    try {
+      const saved = localStorage.getItem('quoridor_blitz_timer');
+      if (saved !== null) {
+        const val = parseInt(saved, 10);
+        if ([0, 15, 30, 45].includes(val)) return val as BlitzTimerSetting;
+      }
+    } catch {
+      // ignore
+    }
+    return 0;
+  });
+
+  const [turnSecondsLeft, setTurnSecondsLeft] = useState<number>(blitzTimer || 0);
+
   // --- Game State ---
   const [players, setPlayers] = useState<Record<PlayerId, Player>>(() => {
     if (initialSaved?.players) return initialSaved.players;
-    return {
-      1: {
-        id: 1,
-        name: 'Joueur 1 (Bleu)',
-        position: { ...INITIAL_POSITIONS[1] },
-        wallsRemaining: MAX_WALLS_PER_PLAYER,
-        color: '#38bdf8',
-        glowColor: 'rgba(56, 189, 248, 0.4)',
-        targetRow: TARGET_ROWS[1],
-      },
-      2: {
-        id: 2,
-        name: gameMode === 'ai' ? 'IA King' : 'Joueur 2 (Orange)',
-        position: { ...INITIAL_POSITIONS[2] },
-        wallsRemaining: MAX_WALLS_PER_PLAYER,
-        color: '#f97316',
-        glowColor: 'rgba(249, 115, 22, 0.4)',
-        targetRow: TARGET_ROWS[2],
-        isAI: gameMode === 'ai',
-      },
-    };
+    return createInitialPlayers(playerCount, gameMode);
   });
 
   const [activePlayerId, setActivePlayerId] = useState<PlayerId>(() => {
@@ -119,8 +169,8 @@ export const App: React.FC = () => {
     return initialSaved?.winner ?? null;
   });
 
-  const [history, setHistory] = useState<GameHistoryEntry[]>(() => {
-    return initialSaved?.history ?? [];
+  const [replaySteps, setReplaySteps] = useState<ReplayStep[]>(() => {
+    return initialSaved?.replaySteps ?? [];
   });
 
   const [elapsedSeconds, setElapsedSeconds] = useState<number>(() => {
@@ -149,14 +199,14 @@ export const App: React.FC = () => {
   const [isModeModalOpen, setIsModeModalOpen] = useState<boolean>(false);
   const [isQRModalOpen, setIsQRModalOpen] = useState<boolean>(false);
   const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [isThemeModalOpen, setIsThemeModalOpen] = useState<boolean>(false);
+  const [isOnlineModalOpen, setIsOnlineModalOpen] = useState<boolean>(false);
+  const [isReplayOpen, setIsReplayOpen] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(soundManager.isMuted);
 
-  const networkUrl = useMemo(() => {
-    if (typeof window !== 'undefined') {
-      return `http://${window.location.hostname || '192.168.100.74'}:${window.location.port || '5174'}`;
-    }
-    return 'http://192.168.100.74:5174';
-  }, []);
+  // Online Multiplayer State
+  const [onlineRoomCode, setOnlineRoomCode] = useState<string | null>(null);
+  const [onlinePlayerId, setOnlinePlayerId] = useState<PlayerId | null>(null);
 
   const showToast = useCallback((type: ToastMessage['type'], title: string, description: string) => {
     setToast({
@@ -165,7 +215,6 @@ export const App: React.FC = () => {
       title,
       description,
     });
-    // Auto dismiss after 3.8s
     setTimeout(() => {
       setToast((prev) => (prev?.title === title ? null : prev));
     }, 3800);
@@ -175,16 +224,29 @@ export const App: React.FC = () => {
     setToast(null);
   }, []);
 
+  // --- Auto-detect room parameter from URL on mount ---
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const roomParam = params.get('room');
+      if (roomParam) {
+        setIsOnlineModalOpen(true);
+      }
+    }
+  }, []);
+
   // --- Auto-Save Game State to localStorage ---
   useEffect(() => {
+    if (gameMode === 'online') return;
     try {
       const stateToSave: SavedGameData = {
         players,
         activePlayerId,
+        playerCount,
         walls,
         turnCount,
         winner,
-        history,
+        replaySteps,
         gameMode,
         aiDifficulty,
         elapsedSeconds,
@@ -193,126 +255,266 @@ export const App: React.FC = () => {
     } catch {
       // Ignore storage errors
     }
-  }, [players, activePlayerId, walls, turnCount, winner, history, gameMode, aiDifficulty, elapsedSeconds]);
+  }, [
+    players,
+    activePlayerId,
+    playerCount,
+    walls,
+    turnCount,
+    winner,
+    replaySteps,
+    gameMode,
+    aiDifficulty,
+    elapsedSeconds,
+  ]);
 
-  // --- Game Timer Loop (Pauses when in pause or game finished) ---
+  // --- Game Timer Loop ---
   useEffect(() => {
     if (isPaused || winner !== null) return;
-
     const timer = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
-
     return () => clearInterval(timer);
   }, [isPaused, winner]);
 
-  // Current active player and opponent
-  const activePlayer = players[activePlayerId];
-  const opponentPlayer = players[activePlayerId === 1 ? 2 : 1];
+  // --- Blitz Clock Countdown Loop ---
+  useEffect(() => {
+    if (blitzTimer === 0 || winner !== null || isPaused || isAIThinking) return;
+
+    const interval = setInterval(() => {
+      setTurnSecondsLeft((prev) => {
+        if (prev <= 1) {
+          hapticManager.vibrateInvalid();
+          soundManager.playError();
+          const nextPlayer = getNextPlayerId(activePlayerId, playerCount);
+          setActivePlayerId(nextPlayer);
+          showToast(
+            'warning',
+            'Temps écoulé !',
+            `Le temps de réflexion de ${players[activePlayerId]?.name || 'Joueur'} a expiré. Tour passé.`
+          );
+
+          if (gameMode === 'online') {
+            multiplayerService.sendTimeout();
+          }
+
+          return blitzTimer;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [
+    blitzTimer,
+    activePlayerId,
+    playerCount,
+    winner,
+    isPaused,
+    isAIThinking,
+    gameMode,
+    players,
+    showToast,
+  ]);
+
+  // Reset clock when active player changes
+  useEffect(() => {
+    if (blitzTimer > 0) {
+      setTurnSecondsLeft(blitzTimer);
+    }
+  }, [activePlayerId, blitzTimer]);
+
+  // Reset function
+  const resetGame = useCallback(
+    (count: PlayerCount, mode: GameMode, diff: AIDifficulty = aiDifficulty) => {
+      if (aiTimeoutRef.current) {
+        clearTimeout(aiTimeoutRef.current);
+        aiTimeoutRef.current = null;
+      }
+      setIsAIThinking(false);
+
+      const freshPlayers = createInitialPlayers(count, mode);
+      setPlayerCount(count);
+      setGameMode(mode);
+      setAiDifficulty(diff);
+      setPlayers(freshPlayers);
+      setActivePlayerId(1);
+      setWalls([]);
+      setTurnCount(1);
+      setWinner(null);
+      setWallPreview(null);
+      setCurrentMode('pawn');
+      setReplaySteps([]);
+      setElapsedSeconds(0);
+      setTurnSecondsLeft(blitzTimer || 0);
+
+      soundManager.playTap();
+      hapticManager.vibrateTap();
+
+      try {
+        localStorage.removeItem('quoridor_saved_game');
+      } catch {
+        // ignore
+      }
+    },
+    [aiDifficulty, blitzTimer]
+  );
+
+  // Distance calculations
+  const distances = useMemo(() => {
+    const distMap: Record<PlayerId, number> = { 1: -1, 2: -1, 3: -1, 4: -1 };
+    const pList = playerCount === 4 ? ([1, 2, 3, 4] as PlayerId[]) : ([1, 2] as PlayerId[]);
+    for (const id of pList) {
+      if (players[id]) {
+        distMap[id] = getShortestPathDistanceToGoal(
+          players[id].position,
+          players[id].targetGoal,
+          walls
+        );
+      }
+    }
+    return distMap;
+  }, [players, walls, playerCount]);
 
   // Legal pawn moves for active player
   const validPawnMoves = useMemo(() => {
-    if (winner || isPaused || (gameMode === 'ai' && activePlayerId === 2)) return [];
-    return getValidPawnMoves(activePlayer.position, opponentPlayer.position, walls);
-  }, [activePlayer.position, opponentPlayer.position, walls, winner, isPaused, gameMode, activePlayerId]);
+    if (winner || isPaused) return [];
+    if (gameMode === 'ai' && activePlayerId === 2) return [];
+    if (gameMode === 'online' && onlinePlayerId !== activePlayerId) return [];
 
-  // Shortest path distances for HUD display
-  const p1Distance = useMemo(() => {
-    return getShortestPathDistance(players[1].position, players[1].targetRow, walls);
-  }, [players, walls]);
+    const activeP = players[activePlayerId];
+    if (!activeP) return [];
 
-  const p2Distance = useMemo(() => {
-    return getShortestPathDistance(players[2].position, players[2].targetRow, walls);
-  }, [players, walls]);
+    const opponentPositions = Object.values(players)
+      .filter((p) => p.id !== activePlayerId)
+      .map((p) => p.position);
 
-  // --- State Snapshot Helper for Undo ---
-  const saveHistorySnapshot = useCallback(
-    (actionDescription: string) => {
-      setHistory((prev) => [
-        ...prev,
-        {
-          players: {
-            1: { ...players[1], position: { ...players[1].position } },
-            2: { ...players[2], position: { ...players[2].position } },
-          },
-          activePlayer: activePlayerId,
-          walls: [...walls],
-          turnCount,
-          lastActionDescription: actionDescription,
+    return getValidPawnMoves(activeP.position, opponentPositions, walls);
+  }, [winner, isPaused, gameMode, activePlayerId, onlinePlayerId, players, walls]);
+
+  // Helper to record a step in replay history
+  const createReplayStep = useCallback(
+    (
+      actionType: 'move' | 'wall',
+      pId: PlayerId,
+      desc: string,
+      from?: Position,
+      to?: Position,
+      wall?: Wall
+    ): ReplayStep => {
+      const playersState: Record<PlayerId, { position: Position; wallsRemaining: number }> = {
+        1: { position: { ...players[1].position }, wallsRemaining: players[1].wallsRemaining },
+        2: { position: { ...players[2].position }, wallsRemaining: players[2].wallsRemaining },
+        3: {
+          position: players[3] ? { ...players[3].position } : { x: 0, y: 0 },
+          wallsRemaining: players[3]?.wallsRemaining ?? 0,
         },
-      ]);
+        4: {
+          position: players[4] ? { ...players[4].position } : { x: 0, y: 0 },
+          wallsRemaining: players[4]?.wallsRemaining ?? 0,
+        },
+      };
+
+      return {
+        stepNumber: replaySteps.length + 1,
+        turnNumber: turnCount,
+        playerId: pId,
+        actionType,
+        from,
+        to,
+        wall: wall ? { x: wall.x, y: wall.y, orientation: wall.orientation } : undefined,
+        playersState,
+        wallsState: [...walls, ...(wall ? [wall] : [])],
+        description: desc,
+      };
     },
-    [players, activePlayerId, walls, turnCount]
+    [replaySteps.length, turnCount, players, walls]
   );
 
-  // --- Handlers ---
-
+  // Handle cell click (Pawn Move)
   const handleCellClick = useCallback(
     (x: number, y: number) => {
-      if (winner || isPaused || isAIThinking || (gameMode === 'ai' && activePlayerId === 2)) return;
+      if (winner || isPaused || isAIThinking) return;
+      if (gameMode === 'ai' && activePlayerId === 2) return;
+      if (gameMode === 'online' && onlinePlayerId !== activePlayerId) return;
 
-      // If player clicks their own pawn, switch to pawn mode
-      if (activePlayer.position.x === x && activePlayer.position.y === y) {
+      const activeP = players[activePlayerId];
+      if (!activeP) return;
+
+      if (activeP.position.x === x && activeP.position.y === y) {
         setCurrentMode('pawn');
         setWallPreview(null);
         soundManager.playTap();
+        hapticManager.vibrateTap();
         return;
       }
 
-      // If user is in wall mode, clicking an unrelated cell cancels the wall preview
       if (currentMode === 'wall' && wallPreview) {
         setWallPreview(null);
         return;
       }
 
-      // Check if target is in valid pawn moves
       const isValid = validPawnMoves.some((m) => m.x === x && m.y === y);
-
       if (!isValid) {
-        // Only trigger error if user is actively in pawn mode
         if (currentMode === 'pawn') {
           soundManager.playError();
+          hapticManager.vibrateInvalid();
           showToast(
             'warning',
             'Coup non autorisé',
-            'Déplacez votre pion sur une case adjacente valide ou sautez par-dessus l\'adversaire.'
+            'Déplacez votre pion sur une case libre ou sautez par-dessus un joueur adjacent.'
           );
         }
         return;
       }
 
-      // Valid Pawn Move!
-      saveHistorySnapshot(`Déplacement du Joueur ${activePlayerId} en (${String.fromCharCode(65 + x)}${y + 1})`);
+      const dx = Math.abs(x - activeP.position.x);
+      const dy = Math.abs(y - activeP.position.y);
+      const isJump = dx + dy > 1 || (dx === 1 && dy === 1);
+
+      if (isJump) {
+        hapticManager.vibrateJump();
+      } else {
+        hapticManager.vibrateMove();
+      }
       soundManager.playMove();
 
-      const newPosition: Position = { x, y };
+      const fromPos = { ...activeP.position };
+      const toPos: Position = { x, y };
 
-      // Check Win Condition
-      if (newPosition.y === activePlayer.targetRow) {
-        setPlayers((prev) => ({
-          ...prev,
-          [activePlayerId]: {
-            ...prev[activePlayerId],
-            position: newPosition,
-          },
-        }));
-        setWinner(activePlayerId);
-        soundManager.playVictory();
-        return;
+      const step = createReplayStep(
+        'move',
+        activePlayerId,
+        `${activeP.name} avance en ${String.fromCharCode(65 + x)}${y + 1}`,
+        fromPos,
+        toPos
+      );
+      setReplaySteps((prev) => [...prev, step]);
+
+      if (gameMode === 'online') {
+        multiplayerService.sendMove(toPos);
       }
 
-      // Update position and pass turn
+      const hasWon = hasPlayerReachedGoal(toPos, activeP.targetGoal);
+
       setPlayers((prev) => ({
         ...prev,
         [activePlayerId]: {
           ...prev[activePlayerId],
-          position: newPosition,
+          position: toPos,
         },
       }));
 
-      // Switch turn
-      setActivePlayerId((prev) => (prev === 1 ? 2 : 1));
-      if (activePlayerId === 2) {
+      if (hasWon) {
+        setWinner(activePlayerId);
+        soundManager.playVictory();
+        hapticManager.vibrateVictory();
+        return;
+      }
+
+      const nextId = getNextPlayerId(activePlayerId, playerCount);
+      setActivePlayerId(nextId);
+      if (nextId === 1) {
         setTurnCount((prev) => prev + 1);
       }
       setWallPreview(null);
@@ -322,33 +524,39 @@ export const App: React.FC = () => {
       isPaused,
       isAIThinking,
       gameMode,
-      activePlayer,
       activePlayerId,
+      onlinePlayerId,
+      players,
       currentMode,
       wallPreview,
       validPawnMoves,
-      saveHistorySnapshot,
+      playerCount,
+      createReplayStep,
       showToast,
     ]
   );
 
+  // Handle intersection click (Wall preview & confirm)
   const handleIntersectionClick = useCallback(
     (wx: number, wy: number) => {
-      if (winner || isPaused || isAIThinking || (gameMode === 'ai' && activePlayerId === 2)) return;
+      if (winner || isPaused || isAIThinking) return;
+      if (gameMode === 'ai' && activePlayerId === 2) return;
+      if (gameMode === 'online' && onlinePlayerId !== activePlayerId) return;
 
-      // Check remaining walls
-      if (activePlayer.wallsRemaining <= 0) {
+      const activeP = players[activePlayerId];
+      if (!activeP) return;
+
+      if (activeP.wallsRemaining <= 0) {
         soundManager.playError();
-        showToast('error', 'Réserve épuisée', `${activePlayer.name} n'a plus de murs disponibles.`);
+        hapticManager.vibrateInvalid();
+        showToast('error', 'Réserve épuisée', `${activeP.name} n'a plus de murs disponibles.`);
         return;
       }
 
-      // If mode is pawn, switch to wall mode seamlessly
       if (currentMode !== 'wall') {
         setCurrentMode('wall');
       }
 
-      // If player clicked the exact same intersection that already has a valid preview, confirm placement!
       if (
         wallPreview &&
         wallPreview.x === wx &&
@@ -360,16 +568,12 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Test placement
       const validation = validateWallPlacement(
         wx,
         wy,
         selectedOrientation,
         walls,
-        players[1].position,
-        players[2].position,
-        players[1].targetRow,
-        players[2].targetRow
+        Object.values(players)
       );
 
       setWallPreview({
@@ -382,9 +586,11 @@ export const App: React.FC = () => {
 
       if (!validation.isValid) {
         soundManager.playError();
-        showToast('error', 'Placement interdit', validation.reason || 'Ce placement de mur est invalide.');
+        hapticManager.vibrateInvalid();
+        showToast('error', 'Placement interdit', validation.reason || 'Ce placement est bloqué.');
       } else {
         soundManager.playTap();
+        hapticManager.vibrateTap();
       }
     },
     [
@@ -392,34 +598,34 @@ export const App: React.FC = () => {
       isPaused,
       isAIThinking,
       gameMode,
-      activePlayer,
       activePlayerId,
+      onlinePlayerId,
+      players,
       currentMode,
       wallPreview,
       selectedOrientation,
       walls,
-      players,
       showToast,
     ]
   );
 
   const handleToggleOrientation = useCallback(() => {
-    if (isPaused || isAIThinking || (gameMode === 'ai' && activePlayerId === 2)) return;
+    if (isPaused || isAIThinking) return;
+    if (gameMode === 'ai' && activePlayerId === 2) return;
+    if (gameMode === 'online' && onlinePlayerId !== activePlayerId) return;
+
     const newOri: WallOrientation = selectedOrientation === 'horizontal' ? 'vertical' : 'horizontal';
     setSelectedOrientation(newOri);
     soundManager.playRotate();
+    hapticManager.vibrateTap();
 
-    // If there's an active preview, re-test with new orientation
     if (wallPreview) {
       const validation = validateWallPlacement(
         wallPreview.x,
         wallPreview.y,
         newOri,
         walls,
-        players[1].position,
-        players[2].position,
-        players[1].targetRow,
-        players[2].targetRow
+        Object.values(players)
       );
 
       setWallPreview({
@@ -432,21 +638,32 @@ export const App: React.FC = () => {
 
       if (!validation.isValid) {
         soundManager.playError();
-        showToast('error', 'Orientation bloquée', validation.reason || 'Ce placement est interdit dans cette orientation.');
+        hapticManager.vibrateInvalid();
+        showToast('error', 'Orientation bloquée', validation.reason || 'Placement interdit dans cette orientation.');
       }
     }
-  }, [isPaused, isAIThinking, gameMode, activePlayerId, selectedOrientation, wallPreview, walls, players, showToast]);
+  }, [
+    isPaused,
+    isAIThinking,
+    gameMode,
+    activePlayerId,
+    onlinePlayerId,
+    selectedOrientation,
+    wallPreview,
+    walls,
+    players,
+    showToast,
+  ]);
 
   const handleConfirmWall = useCallback(() => {
     if (!wallPreview || !wallPreview.isValid || winner || isPaused) return;
 
-    if (activePlayer.wallsRemaining <= 0) {
+    const activeP = players[activePlayerId];
+    if (!activeP || activeP.wallsRemaining <= 0) {
       soundManager.playError();
-      showToast('error', 'Réserve épuisée', 'Vous n\'avez plus de murs.');
+      hapticManager.vibrateInvalid();
       return;
     }
-
-    saveHistorySnapshot(`Pose de mur par le Joueur ${activePlayerId} en (${wallPreview.x}, ${wallPreview.y})`);
 
     const newWall: Wall = {
       id: `wall_${Date.now()}_${Math.random()}`,
@@ -455,6 +672,20 @@ export const App: React.FC = () => {
       orientation: wallPreview.orientation,
       placedBy: activePlayerId,
     };
+
+    const step = createReplayStep(
+      'wall',
+      activePlayerId,
+      `${activeP.name} a posé un mur ${newWall.orientation === 'horizontal' ? 'horizontal' : 'vertical'} en (${wallPreview.x}, ${wallPreview.y})`,
+      undefined,
+      undefined,
+      newWall
+    );
+    setReplaySteps((prev) => [...prev, step]);
+
+    if (gameMode === 'online') {
+      multiplayerService.sendWall(newWall.x, newWall.y, newWall.orientation);
+    }
 
     setWalls((prev) => [...prev, newWall]);
     setPlayers((prev) => ({
@@ -466,122 +697,30 @@ export const App: React.FC = () => {
     }));
 
     soundManager.playWallPlace();
+    hapticManager.vibrateWallPlaced();
     setWallPreview(null);
-    setCurrentMode('pawn'); // Reset to pawn mode for next turn
+    setCurrentMode('pawn');
 
-    // Toggle player
-    setActivePlayerId((prev) => (prev === 1 ? 2 : 1));
-    if (activePlayerId === 2) {
+    const nextId = getNextPlayerId(activePlayerId, playerCount);
+    setActivePlayerId(nextId);
+    if (nextId === 1) {
       setTurnCount((prev) => prev + 1);
     }
-  }, [wallPreview, winner, isPaused, activePlayer.wallsRemaining, saveHistorySnapshot, activePlayerId]);
+  }, [
+    wallPreview,
+    winner,
+    isPaused,
+    players,
+    activePlayerId,
+    gameMode,
+    playerCount,
+    createReplayStep,
+  ]);
 
   const handleCancelPreview = useCallback(() => {
     setWallPreview(null);
     soundManager.playTap();
-  }, []);
-
-  const handleUndo = useCallback(() => {
-    if (history.length === 0 || isAIThinking || isPaused) return;
-
-    // In AI mode, if player 1 undos, undo 2 steps back to player 1's turn
-    if (gameMode === 'ai' && history.length >= 2) {
-      const targetState = history[history.length - 2];
-      setPlayers(targetState.players);
-      setActivePlayerId(1);
-      setWalls(targetState.walls);
-      setTurnCount(targetState.turnCount);
-      setWinner(null);
-      setWallPreview(null);
-      setCurrentMode('pawn');
-      setHistory((prev) => prev.slice(0, prev.length - 2));
-    } else {
-      const previousState = history[history.length - 1];
-      setPlayers(previousState.players);
-      setActivePlayerId(previousState.activePlayer);
-      setWalls(previousState.walls);
-      setTurnCount(previousState.turnCount);
-      setWinner(null);
-      setWallPreview(null);
-      setCurrentMode('pawn');
-      setHistory((prev) => prev.slice(0, prev.length - 1));
-    }
-
-    soundManager.playTap();
-  }, [history, isAIThinking, isPaused, gameMode]);
-
-  const resetGameWithSettings = useCallback(
-    (mode: GameMode, _difficulty?: AIDifficulty) => {
-      if (aiTimeoutRef.current) {
-        clearTimeout(aiTimeoutRef.current);
-        aiTimeoutRef.current = null;
-      }
-      setIsAIThinking(false);
-
-      const freshPlayers: Record<PlayerId, Player> = {
-        1: {
-          id: 1,
-          name: 'Joueur 1 (Bleu)',
-          position: { ...INITIAL_POSITIONS[1] },
-          wallsRemaining: MAX_WALLS_PER_PLAYER,
-          color: '#38bdf8',
-          glowColor: 'rgba(56, 189, 248, 0.4)',
-          targetRow: TARGET_ROWS[1],
-        },
-        2: {
-          id: 2,
-          name: mode === 'ai' ? 'IA King' : 'Joueur 2 (Orange)',
-          position: { ...INITIAL_POSITIONS[2] },
-          wallsRemaining: MAX_WALLS_PER_PLAYER,
-          color: '#f97316',
-          glowColor: 'rgba(249, 115, 22, 0.4)',
-          targetRow: TARGET_ROWS[2],
-          isAI: mode === 'ai',
-        },
-      };
-
-      setPlayers(freshPlayers);
-      setActivePlayerId(1);
-      setWalls([]);
-      setTurnCount(1);
-      setWinner(null);
-      setWallPreview(null);
-      setCurrentMode('pawn');
-      setHistory([]);
-      setElapsedSeconds(0);
-      soundManager.playTap();
-
-      try {
-        localStorage.removeItem('quoridor_saved_game');
-      } catch {
-        // ignore
-      }
-    },
-    []
-  );
-
-  const handleResetGame = useCallback(() => {
-    resetGameWithSettings(gameMode, aiDifficulty);
-  }, [resetGameWithSettings, gameMode, aiDifficulty]);
-
-  const handleSelectModeAndDifficulty = useCallback(
-    (newMode: GameMode, newDiff: AIDifficulty) => {
-      setGameMode(newMode);
-      setAiDifficulty(newDiff);
-      try {
-        localStorage.setItem('quoridor_game_mode', newMode);
-        localStorage.setItem('quoridor_ai_difficulty', newDiff);
-      } catch {
-        // ignore
-      }
-      resetGameWithSettings(newMode, newDiff);
-    },
-    [resetGameWithSettings]
-  );
-
-  const handleToggleMute = useCallback(() => {
-    const muted = soundManager.toggleMute();
-    setIsMuted(muted);
+    hapticManager.vibrateTap();
   }, []);
 
   const handleToggleDockSide = useCallback(() => {
@@ -595,52 +734,61 @@ export const App: React.FC = () => {
       return next;
     });
     soundManager.playTap();
+    hapticManager.vibrateTap();
   }, []);
 
-  // --- AI Autonomous Play Loop ---
+  const handleToggleMute = useCallback(() => {
+    const muted = soundManager.toggleMute();
+    setIsMuted(muted);
+    hapticManager.vibrateTap();
+  }, []);
+
+  // --- AI Autonomous Loop ---
   useEffect(() => {
     if (gameMode !== 'ai' || activePlayerId !== 2 || winner !== null || isPaused) {
       return;
     }
 
     setIsAIThinking(true);
-
     const delay = aiDifficulty === 'hard' ? 650 : 500;
+
     aiTimeoutRef.current = window.setTimeout(() => {
       const action = computeAIMove(players[2], players[1], walls, aiDifficulty);
 
       if (action.type === 'move') {
-        saveHistorySnapshot(
-          `Déplacement IA en (${String.fromCharCode(65 + action.to.x)}${action.to.y + 1})`
-        );
+        const fromPos = { ...players[2].position };
+        const toPos = action.to;
 
-        if (action.to.y === players[2].targetRow) {
-          // AI Wins!
-          setPlayers((prev) => ({
-            ...prev,
-            2: {
-              ...prev[2],
-              position: action.to,
-            },
-          }));
+        const step = createReplayStep(
+          'move',
+          2,
+          `IA King avance en ${String.fromCharCode(65 + toPos.x)}${toPos.y + 1}`,
+          fromPos,
+          toPos
+        );
+        setReplaySteps((prev) => [...prev, step]);
+
+        const hasWon = hasPlayerReachedGoal(toPos, players[2].targetGoal);
+
+        setPlayers((prev) => ({
+          ...prev,
+          2: {
+            ...prev[2],
+            position: toPos,
+          },
+        }));
+
+        if (hasWon) {
           setWinner(2);
           soundManager.playVictory();
+          hapticManager.vibrateVictory();
         } else {
-          setPlayers((prev) => ({
-            ...prev,
-            2: {
-              ...prev[2],
-              position: action.to,
-            },
-          }));
           soundManager.playMove();
+          hapticManager.vibrateMove();
           setActivePlayerId(1);
           setTurnCount((prev) => prev + 1);
         }
       } else {
-        // AI places a wall
-        saveHistorySnapshot(`Pose de mur par l'IA en (${action.x}, ${action.y})`);
-
         const newWall: Wall = {
           id: `wall_${Date.now()}_${Math.random()}`,
           x: action.x,
@@ -648,6 +796,16 @@ export const App: React.FC = () => {
           orientation: action.orientation,
           placedBy: 2,
         };
+
+        const step = createReplayStep(
+          'wall',
+          2,
+          `IA King pose un mur en (${action.x}, ${action.y})`,
+          undefined,
+          undefined,
+          newWall
+        );
+        setReplaySteps((prev) => [...prev, step]);
 
         setWalls((prev) => [...prev, newWall]);
         setPlayers((prev) => ({
@@ -659,6 +817,7 @@ export const App: React.FC = () => {
         }));
 
         soundManager.playWallPlace();
+        hapticManager.vibrateWallPlaced();
         showToast(
           'info',
           "L'IA a posé un mur !",
@@ -689,19 +848,144 @@ export const App: React.FC = () => {
     players,
     walls,
     aiDifficulty,
-    saveHistorySnapshot,
+    createReplayStep,
     showToast,
   ]);
 
+  // --- Multiplayer P2P Network Hookups ---
+  useEffect(() => {
+    multiplayerService.setCallbacks({
+      onRemoteMove: (remotePlayerId, to) => {
+        soundManager.playMove();
+        hapticManager.vibrateMove();
+
+        const remoteP = players[remotePlayerId];
+        const fromPos = remoteP ? { ...remoteP.position } : undefined;
+
+        setPlayers((prev) => ({
+          ...prev,
+          [remotePlayerId]: {
+            ...prev[remotePlayerId],
+            position: to,
+          },
+        }));
+
+        if (remoteP) {
+          const step = createReplayStep(
+            'move',
+            remotePlayerId,
+            `${remoteP.name} avance en ${String.fromCharCode(65 + to.x)}${to.y + 1}`,
+            fromPos,
+            to
+          );
+          setReplaySteps((prev) => [...prev, step]);
+
+          const hasWon = hasPlayerReachedGoal(to, remoteP.targetGoal);
+          if (hasWon) {
+            setWinner(remotePlayerId);
+            soundManager.playVictory();
+            hapticManager.vibrateVictory();
+            return;
+          }
+        }
+
+        const nextId = getNextPlayerId(remotePlayerId, playerCount);
+        setActivePlayerId(nextId);
+        if (nextId === 1) {
+          setTurnCount((prev) => prev + 1);
+        }
+      },
+      onRemoteWall: (remotePlayerId, x, y, orientation) => {
+        soundManager.playWallPlace();
+        hapticManager.vibrateWallPlaced();
+
+        const newWall: Wall = {
+          id: `wall_${Date.now()}_${Math.random()}`,
+          x,
+          y,
+          orientation,
+          placedBy: remotePlayerId,
+        };
+
+        setWalls((prev) => [...prev, newWall]);
+        setPlayers((prev) => ({
+          ...prev,
+          [remotePlayerId]: {
+            ...prev[remotePlayerId],
+            wallsRemaining: prev[remotePlayerId].wallsRemaining - 1,
+          },
+        }));
+
+        const remoteP = players[remotePlayerId];
+        const step = createReplayStep(
+          'wall',
+          remotePlayerId,
+          `${remoteP?.name || 'Adversaire'} a posé un mur en (${x}, ${y})`,
+          undefined,
+          undefined,
+          newWall
+        );
+        setReplaySteps((prev) => [...prev, step]);
+
+        const nextId = getNextPlayerId(remotePlayerId, playerCount);
+        setActivePlayerId(nextId);
+        if (nextId === 1) {
+          setTurnCount((prev) => prev + 1);
+        }
+      },
+      onRemoteTimeout: (remotePlayerId) => {
+        showToast('info', 'Temps écoulé', `Le joueur ${remotePlayerId} a dépassé son temps imparti.`);
+        const nextId = getNextPlayerId(remotePlayerId, playerCount);
+        setActivePlayerId(nextId);
+      },
+      onPeerDisconnect: (_peerId) => {
+        showToast('error', 'Déconnexion', "Un joueur s'est déconnecté de la partie en ligne.");
+      },
+    });
+  }, [players, playerCount, createReplayStep, showToast]);
+
+  // When game starts from OnlineLobbyModal
+  const handleStartOnlineGame = useCallback(
+    (roomCode: string, myPlayerId: PlayerId, count: PlayerCount, startingPlayerId: PlayerId) => {
+      setOnlineRoomCode(roomCode);
+      setOnlinePlayerId(myPlayerId);
+      setPlayerCount(count);
+      setGameMode('online');
+
+      const freshPlayers = createInitialPlayers(count, 'online');
+      setPlayers(freshPlayers);
+      setActivePlayerId(startingPlayerId);
+      setWalls([]);
+      setTurnCount(1);
+      setWinner(null);
+      setWallPreview(null);
+      setCurrentMode('pawn');
+      setReplaySteps([]);
+      setElapsedSeconds(0);
+      setTurnSecondsLeft(blitzTimer || 0);
+
+      setIsOnlineModalOpen(false);
+      showToast('success', 'Partie en Ligne Commencée !', `Vous jouez le Joueur ${myPlayerId}.`);
+    },
+    [blitzTimer, showToast]
+  );
+
+  const activePlayer = players[activePlayerId] || players[1];
+
   return (
-    <main className="w-full h-full min-h-[100dvh] max-h-[100dvh] flex flex-col justify-between overflow-hidden bg-gradient-to-b from-[#0f1117] via-[#141721] to-[#0a0c10] text-slate-100 relative pt-safe pb-safe pl-safe pr-safe">
-      {/* Dynamic Toast Alerts */}
+    <main
+      className="w-full h-full min-h-[100dvh] max-h-[100dvh] flex flex-col justify-between overflow-hidden text-slate-100 relative pt-safe pb-safe pl-safe pr-safe"
+      style={{
+        background: `radial-gradient(ellipse at 50% 0%, ${currentTheme.boardBgGradient.start} 0%, #0a0c10 100%)`,
+      }}
+    >
+      {/* Toast Alerts */}
       <Toast toast={toast} onDismiss={dismissToast} />
 
       {/* Rules Modal */}
       <RulesModal isOpen={isRulesOpen} onClose={() => setIsRulesOpen(false)} />
 
-      {/* Pause & Saved Game Modal */}
+      {/* Pause Modal */}
       <PauseModal
         isOpen={isPaused}
         players={players}
@@ -711,94 +995,153 @@ export const App: React.FC = () => {
         aiDifficulty={aiDifficulty}
         elapsedSeconds={elapsedSeconds}
         onResume={() => setIsPaused(false)}
-        onRestart={handleResetGame}
+        onRestart={() => resetGame(playerCount, gameMode, aiDifficulty)}
         onOpenModeModal={() => setIsModeModalOpen(true)}
         onOpenRules={() => setIsRulesOpen(true)}
       />
 
-      {/* Game Mode & AI Difficulty Selection Modal */}
+      {/* Mode & Options Modal */}
       <ModeModal
         isOpen={isModeModalOpen}
         currentMode={gameMode}
         currentDifficulty={aiDifficulty}
-        onSelect={handleSelectModeAndDifficulty}
+        playerCount={playerCount}
+        blitzTimer={blitzTimer}
+        onSelectMode={(mode, diff, count) => {
+          resetGame(count, mode, diff);
+        }}
+        onSelectTimer={(t) => {
+          setBlitzTimer(t);
+          setTurnSecondsLeft(t);
+          try {
+            localStorage.setItem('quoridor_blitz_timer', t.toString());
+          } catch {
+            // ignore
+          }
+        }}
+        onOpenOnline={() => setIsOnlineModalOpen(true)}
         onClose={() => setIsModeModalOpen(false)}
       />
 
-      {/* Mobile QR Code Modal */}
+      {/* Theme & Settings Modal */}
+      <ThemeSettingsModal
+        isOpen={isThemeModalOpen}
+        currentTheme={themeId}
+        hapticsEnabled={hapticsEnabled}
+        onSelectTheme={handleSelectTheme}
+        onToggleHaptics={handleToggleHaptics}
+        onClose={() => setIsThemeModalOpen(false)}
+      />
+
+      {/* Online Lobby Modal */}
+      <OnlineLobbyModal
+        isOpen={isOnlineModalOpen}
+        onStartGame={handleStartOnlineGame}
+        onClose={() => setIsOnlineModalOpen(false)}
+      />
+
+      {/* Game Replay Modal */}
+      <ReplayModal
+        isOpen={isReplayOpen}
+        replaySteps={replaySteps}
+        themeId={themeId}
+        onClose={() => setIsReplayOpen(false)}
+      />
+
+      {/* Mobile QR Modal */}
       <MobileQRModal
         isOpen={isQRModalOpen}
         onClose={() => setIsQRModalOpen(false)}
-        networkUrl={networkUrl}
+        networkUrl={typeof window !== 'undefined' ? window.location.href : 'https://quoridor-king.vercel.app'}
       />
 
       {/* Victory Celebration Modal */}
       <VictoryModal
         winnerId={winner}
         players={players}
+        playerCount={playerCount}
         turnCount={turnCount}
-        onRestart={handleResetGame}
+        theme={currentTheme}
+        onRestart={() => resetGame(playerCount, gameMode, aiDifficulty)}
+        onOpenReplay={() => setIsReplayOpen(true)}
       />
 
-      {/* Top HUD: Header, Scores, Mode, Turn Indicator, Pause Button */}
+      {/* HUD Bar */}
       <HUD
         players={players}
         activePlayerId={activePlayerId}
+        playerCount={playerCount}
         turnCount={turnCount}
         isMuted={isMuted}
-        p1Distance={p1Distance}
-        p2Distance={p2Distance}
+        distances={distances}
         gameMode={gameMode}
         aiDifficulty={aiDifficulty}
         isAIThinking={isAIThinking}
+        blitzTimer={blitzTimer}
+        turnSecondsLeft={turnSecondsLeft}
+        theme={currentTheme}
+        onlineRoomCode={onlineRoomCode}
+        onlinePlayerId={onlinePlayerId}
         onToggleMute={handleToggleMute}
-        onResetGame={handleResetGame}
+        onResetGame={() => resetGame(playerCount, gameMode, aiDifficulty)}
         onOpenRules={() => setIsRulesOpen(true)}
         onOpenModeModal={() => setIsModeModalOpen(true)}
-        onOpenQRModal={() => setIsQRModalOpen(true)}
+        onOpenOnlineLobby={() => setIsOnlineModalOpen(true)}
+        onOpenThemeSettings={() => setIsThemeModalOpen(true)}
         onOpenPause={() => setIsPaused(true)}
       />
 
-      {/* Center Section: Responsive Vector Game Board with Side Controls */}
+      {/* Center Section: Board + Docked Controls */}
       <div className="flex-1 min-h-0 w-full max-w-5xl mx-auto px-1 sm:px-3 py-1 flex items-center justify-center overflow-hidden">
         <div
           className={`w-full h-full flex ${
             dockSide === 'left' ? 'flex-row-reverse' : 'flex-row'
           } items-center justify-center gap-1.5 sm:gap-3 overflow-hidden`}
         >
-          {/* Board Container: Always square and fills maximum available area */}
+          {/* Board Container */}
           <div className="flex-1 h-full max-h-full aspect-square flex items-center justify-center min-w-0">
             <Board
               players={players}
               activePlayerId={activePlayerId}
+              playerCount={playerCount}
               walls={walls}
               validMoves={validPawnMoves}
               wallPreview={wallPreview}
               currentMode={currentMode}
               selectedOrientation={selectedOrientation}
+              theme={currentTheme}
               onCellClick={handleCellClick}
               onIntersectionClick={handleIntersectionClick}
               onConfirmWall={handleConfirmWall}
             />
           </div>
 
-          {/* Side Controls: Stationed directly beside the board, never covered */}
+          {/* Side Controls */}
           <Controls
             currentMode={currentMode}
             selectedOrientation={selectedOrientation}
             wallPreview={wallPreview}
-            wallsRemaining={activePlayer.wallsRemaining}
-            canUndo={history.length > 0}
+            wallsRemaining={activePlayer?.wallsRemaining ?? 0}
+            canUndo={replaySteps.length > 0 && gameMode !== 'online'}
             dockSide={dockSide}
-            disabled={isAIThinking || isPaused || (gameMode === 'ai' && activePlayerId === 2)}
+            disabled={
+              isAIThinking ||
+              isPaused ||
+              (gameMode === 'ai' && activePlayerId === 2) ||
+              (gameMode === 'online' && onlinePlayerId !== activePlayerId)
+            }
             onSetMode={(mode) => {
               setCurrentMode(mode);
               soundManager.playTap();
+              hapticManager.vibrateTap();
             }}
             onToggleOrientation={handleToggleOrientation}
             onConfirmWall={handleConfirmWall}
             onCancelPreview={handleCancelPreview}
-            onUndo={handleUndo}
+            onUndo={() => {
+              if (replaySteps.length === 0 || gameMode === 'online') return;
+              showToast('info', 'Historique', 'Utilisez le Replay pour revoir vos coups.');
+            }}
             onToggleDockSide={handleToggleDockSide}
           />
         </div>

@@ -1,16 +1,20 @@
 import React from 'react';
-import type { ActionMode, Player, Position, Wall as WallType, WallOrientation, WallPreview } from '../types/game';
+import type { ActionMode, Player, PlayerId, PlayerCount, Position, Wall as WallType, WallOrientation, WallPreview } from '../types/game';
+import type { ThemeConfig } from '../types/themes';
+import { THEMES } from '../types/themes';
 import { Cell } from './Cell';
 import { Wall } from './Wall';
 
 interface BoardProps {
-  players: Record<1 | 2, Player>;
-  activePlayerId: 1 | 2;
+  players: Record<PlayerId, Player>;
+  activePlayerId: PlayerId;
+  playerCount?: PlayerCount;
   walls: WallType[];
   validMoves: Position[];
   wallPreview: WallPreview | null;
   currentMode: ActionMode;
   selectedOrientation: WallOrientation;
+  theme?: ThemeConfig;
   onCellClick: (x: number, y: number) => void;
   onIntersectionClick: (x: number, y: number) => void;
   onConfirmWall: () => void;
@@ -19,11 +23,13 @@ interface BoardProps {
 export const Board: React.FC<BoardProps> = ({
   players,
   activePlayerId,
+  playerCount = 2,
   walls,
   validMoves,
   wallPreview,
   currentMode,
   selectedOrientation: _selectedOrientation,
+  theme = THEMES.wood,
   onCellClick,
   onIntersectionClick,
   onConfirmWall,
@@ -40,8 +46,11 @@ export const Board: React.FC<BoardProps> = ({
 
   // Map players by coordinate key "x,y"
   const playersByPos = new Map<string, Player>();
-  playersByPos.set(`${players[1].position.x},${players[1].position.y}`, players[1]);
-  playersByPos.set(`${players[2].position.x},${players[2].position.y}`, players[2]);
+  for (const p of Object.values(players)) {
+    if (p) {
+      playersByPos.set(`${p.position.x},${p.position.y}`, p);
+    }
+  }
 
   // Set of valid move strings "x,y"
   const validMoveKeys = new Set(validMoves.map((m) => `${m.x},${m.y}`));
@@ -53,30 +62,44 @@ export const Board: React.FC<BoardProps> = ({
         className="w-full h-full max-h-full max-w-full drop-shadow-2xl overflow-visible touch-none"
       >
         <defs>
-          {/* Subtle wood gradient for board background */}
+          {/* Dynamic theme board background gradient */}
           <radialGradient id="boardBg" cx="50%" cy="50%" r="70%">
-            <stop offset="0%" stopColor="#1a1c23" />
-            <stop offset="100%" stopColor="#0f1117" />
+            <stop offset="0%" stopColor={theme.boardBgGradient.start} />
+            <stop offset="100%" stopColor={theme.boardBgGradient.end} />
           </radialGradient>
 
           {/* Border rim gradient */}
           <linearGradient id="boardRim" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stopColor="#374151" />
-            <stop offset="50%" stopColor="#1f2937" />
-            <stop offset="100%" stopColor="#111827" />
+            <stop offset="0%" stopColor={theme.boardRimGradient.start} />
+            <stop offset="50%" stopColor={theme.boardRimGradient.mid} />
+            <stop offset="100%" stopColor={theme.boardRimGradient.end} />
           </linearGradient>
 
-          {/* Player 1 Goal Bar Gradient */}
+          {/* Player 1 Goal Bar Gradient (Top row y=0) */}
           <linearGradient id="p1GoalGlow" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="transparent" />
-            <stop offset="50%" stopColor="rgba(56, 189, 248, 0.25)" />
+            <stop offset="50%" stopColor={theme.accentP1} stopOpacity="0.3" />
             <stop offset="100%" stopColor="transparent" />
           </linearGradient>
 
-          {/* Player 2 Goal Bar Gradient */}
+          {/* Player 2 Goal Bar Gradient (Bottom row y=8) */}
           <linearGradient id="p2GoalGlow" x1="0%" y1="0%" x2="100%" y2="0%">
             <stop offset="0%" stopColor="transparent" />
-            <stop offset="50%" stopColor="rgba(249, 115, 22, 0.25)" />
+            <stop offset="50%" stopColor={theme.accentP2} stopOpacity="0.3" />
+            <stop offset="100%" stopColor="transparent" />
+          </linearGradient>
+
+          {/* Player 3 Goal Bar Gradient (Right col x=8) */}
+          <linearGradient id="p3GoalGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="transparent" />
+            <stop offset="50%" stopColor={theme.accentP3} stopOpacity="0.3" />
+            <stop offset="100%" stopColor="transparent" />
+          </linearGradient>
+
+          {/* Player 4 Goal Bar Gradient (Left col x=0) */}
+          <linearGradient id="p4GoalGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="transparent" />
+            <stop offset="50%" stopColor={theme.accentP4} stopOpacity="0.3" />
             <stop offset="100%" stopColor="transparent" />
           </linearGradient>
         </defs>
@@ -128,6 +151,30 @@ export const Board: React.FC<BoardProps> = ({
           fill="url(#p2GoalGlow)"
           className="pointer-events-none"
         />
+
+        {/* 4-Player Goal Areas (P3 right col x=8, P4 left col x=0) */}
+        {playerCount === 4 && (
+          <>
+            <rect
+              x={PADDING + 8 * STEP}
+              y={PADDING}
+              width={CELL_SIZE + 8}
+              height={9 * CELL_SIZE + 8 * GROOVE_SIZE}
+              rx={8}
+              fill="url(#p3GoalGlow)"
+              className="pointer-events-none"
+            />
+            <rect
+              x={PADDING - 8}
+              y={PADDING}
+              width={CELL_SIZE + 8}
+              height={9 * CELL_SIZE + 8 * GROOVE_SIZE}
+              rx={8}
+              fill="url(#p4GoalGlow)"
+              className="pointer-events-none"
+            />
+          </>
+        )}
 
         {/* Column Coordinates Labels (A - I) */}
         {colLetters.map((letter, i) => (
@@ -186,6 +233,9 @@ export const Board: React.FC<BoardProps> = ({
                 isValidMove={isValidMove}
                 isP1GoalRow={y === 0}
                 isP2GoalRow={y === 8}
+                isP3GoalCol={playerCount === 4 && x === 8}
+                isP4GoalCol={playerCount === 4 && x === 0}
+                theme={theme}
                 onSelect={onCellClick}
               />
             );
@@ -216,10 +266,10 @@ export const Board: React.FC<BoardProps> = ({
                   r={currentMode === 'wall' ? 4 : 2}
                   fill={
                     isSelected
-                      ? '#38bdf8'
+                      ? theme.accentP1
                       : currentMode === 'wall'
-                      ? 'rgba(148, 163, 184, 0.45)'
-                      : 'rgba(51, 65, 85, 0.4)'
+                      ? theme.grooveIntersection
+                      : theme.grooveColor
                   }
                   className="transition-all duration-150"
                 />
@@ -232,7 +282,7 @@ export const Board: React.FC<BoardProps> = ({
                       y1={centerY}
                       x2={centerX + 5}
                       y2={centerY}
-                      stroke="#94a3b8"
+                      stroke={theme.grooveIntersection}
                       strokeWidth="1"
                     />
                     <line
@@ -240,7 +290,7 @@ export const Board: React.FC<BoardProps> = ({
                       y1={centerY - 5}
                       x2={centerX}
                       y2={centerY + 5}
-                      stroke="#94a3b8"
+                      stroke={theme.grooveIntersection}
                       strokeWidth="1"
                     />
                   </g>
@@ -268,6 +318,7 @@ export const Board: React.FC<BoardProps> = ({
             y={w.y}
             orientation={w.orientation}
             placedBy={w.placedBy}
+            theme={theme}
             cellSize={CELL_SIZE}
             grooveSize={GROOVE_SIZE}
             padding={PADDING}
@@ -282,6 +333,7 @@ export const Board: React.FC<BoardProps> = ({
             orientation={wallPreview.orientation}
             isPreview={true}
             isValidPreview={wallPreview.isValid}
+            theme={theme}
             onClick={() => {
               if (wallPreview.isValid) {
                 onConfirmWall();

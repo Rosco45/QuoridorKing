@@ -1,12 +1,16 @@
 import React from 'react';
-import type { GameMode, AIDifficulty } from '../types/game';
-import { X, Users, Bot, Zap, Shield, Flame, Check } from 'lucide-react';
+import type { GameMode, AIDifficulty, PlayerCount, BlitzTimerSetting } from '../types/game';
+import { X, Users, Zap, Shield, Flame, Check, Globe, Timer } from 'lucide-react';
 
 interface ModeModalProps {
   isOpen: boolean;
   currentMode: GameMode;
   currentDifficulty: AIDifficulty;
-  onSelect: (mode: GameMode, difficulty: AIDifficulty) => void;
+  playerCount: PlayerCount;
+  blitzTimer: BlitzTimerSetting;
+  onSelectMode: (mode: GameMode, difficulty: AIDifficulty, count: PlayerCount) => void;
+  onSelectTimer: (timer: BlitzTimerSetting) => void;
+  onOpenOnline: () => void;
   onClose: () => void;
 }
 
@@ -14,7 +18,11 @@ export const ModeModal: React.FC<ModeModalProps> = ({
   isOpen,
   currentMode,
   currentDifficulty,
-  onSelect,
+  playerCount,
+  blitzTimer,
+  onSelectMode,
+  onSelectTimer,
+  onOpenOnline,
   onClose,
 }) => {
   if (!isOpen) return null;
@@ -26,9 +34,9 @@ export const ModeModal: React.FC<ModeModalProps> = ({
         <div className="flex items-center justify-between p-4 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-xl bg-sky-500/20 text-sky-400 border border-sky-500/30">
-              <Bot className="w-5 h-5" />
+              <Users className="w-5 h-5" />
             </div>
-            <h3 className="font-extrabold text-base text-slate-100">Mode de Jeu</h3>
+            <h3 className="font-extrabold text-base text-slate-100">Modes de Jeu & Options</h3>
           </div>
           <button
             onClick={onClose}
@@ -40,48 +48,114 @@ export const ModeModal: React.FC<ModeModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 space-y-3 overflow-y-auto max-h-[75dvh]">
-          {/* Mode 1: Pass-and-Play */}
-          <div
-            onClick={() => {
-              onSelect('pass-and-play', currentDifficulty);
-              onClose();
-            }}
-            className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-start gap-3 ${
-              currentMode === 'pass-and-play'
-                ? 'bg-sky-950/40 border-sky-500 ring-1 ring-sky-400/50'
-                : 'bg-slate-850 hover:bg-slate-800/80 border-slate-800'
-            }`}
-          >
-            <div className="p-2 rounded-xl bg-sky-500/20 text-sky-300 border border-sky-500/30 shrink-0">
-              <Users className="w-5 h-5" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <h4 className="font-bold text-sm text-slate-100">2 Joueurs (Pass-and-Play)</h4>
-                {currentMode === 'pass-and-play' && (
-                  <span className="p-0.5 rounded-full bg-sky-500 text-slate-950">
-                    <Check className="w-3.5 h-3.5 stroke-[3]" />
-                  </span>
-                )}
+        <div className="p-4 space-y-4 overflow-y-auto max-h-[75dvh]">
+          {/* Section: Mode Local Pass-and-Play */}
+          <div>
+            <span className="text-xs font-extrabold tracking-wider uppercase text-slate-400 block mb-2 px-1">
+              Partie Locale (Pass-and-Play)
+            </span>
+
+            <div className="grid grid-cols-2 gap-2">
+              {/* 2 Joueurs */}
+              <div
+                onClick={() => {
+                  onSelectMode('pass-and-play', currentDifficulty, 2);
+                  onClose();
+                }}
+                className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                  currentMode === 'pass-and-play' && playerCount === 2
+                    ? 'bg-sky-950/40 border-sky-500 ring-1 ring-sky-400/50'
+                    : 'bg-slate-850 hover:bg-slate-800/80 border-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-sm text-slate-100">2 Joueurs</span>
+                  {currentMode === 'pass-and-play' && playerCount === 2 && (
+                    <span className="p-0.5 rounded-full bg-sky-500 text-slate-950">
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400 leading-tight">
+                  10 murs chacun. Duel face-à-face classique.
+                </p>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Deux joueurs sur le même écran. Alternez vos tours pour vous affronter localement.
-              </p>
+
+              {/* 4 Joueurs */}
+              <div
+                onClick={() => {
+                  onSelectMode('pass-and-play', currentDifficulty, 4);
+                  onClose();
+                }}
+                className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                  currentMode === 'pass-and-play' && playerCount === 4
+                    ? 'bg-sky-950/40 border-sky-500 ring-1 ring-sky-400/50'
+                    : 'bg-slate-850 hover:bg-slate-800/80 border-slate-800'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-sm text-slate-100">4 Joueurs</span>
+                  {currentMode === 'pass-and-play' && playerCount === 4 && (
+                    <span className="p-0.5 rounded-full bg-sky-500 text-slate-950">
+                      <Check className="w-3 h-3 stroke-[3]" />
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400 leading-tight">
+                  5 murs chacun. 4 côtés opposés. Règle d'or BFS à 4.
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Mode 2: Contre l'IA Header */}
-          <div className="pt-2">
+          {/* Section: Multijoueur en Ligne P2P */}
+          <div>
             <span className="text-xs font-extrabold tracking-wider uppercase text-slate-400 block mb-2 px-1">
-              Jouer Contre l'IA (Intelligence Artificielle)
+              Multijoueur Sans Serveur (P2P / WebRTC)
+            </span>
+
+            <div
+              onClick={() => {
+                onClose();
+                onOpenOnline();
+              }}
+              className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                currentMode === 'online'
+                  ? 'bg-purple-950/40 border-purple-500 ring-1 ring-purple-400/50'
+                  : 'bg-gradient-to-r from-purple-950/30 to-indigo-950/30 hover:from-purple-950/50 hover:to-indigo-950/50 border-purple-500/30'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-xl bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  <Globe className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="font-bold text-sm text-slate-100">Salon Multijoueur P2P</h4>
+                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30">
+                      WebRTC
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Lien d'invitation, mini-jeu pile ou face, 2 à 4 joueurs directs.
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-purple-300 shrink-0">Ouvrir →</span>
+            </div>
+          </div>
+
+          {/* Section: Jouer Contre l'IA */}
+          <div>
+            <span className="text-xs font-extrabold tracking-wider uppercase text-slate-400 block mb-2 px-1">
+              Jouer Contre l'IA King
             </span>
 
             <div className="space-y-2">
               {/* Facile */}
               <div
                 onClick={() => {
-                  onSelect('ai', 'easy');
+                  onSelectMode('ai', 'easy', 2);
                   onClose();
                 }}
                 className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
@@ -116,7 +190,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
               {/* Normal */}
               <div
                 onClick={() => {
-                  onSelect('ai', 'medium');
+                  onSelectMode('ai', 'medium', 2);
                   onClose();
                 }}
                 className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
@@ -151,7 +225,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
               {/* Difficile */}
               <div
                 onClick={() => {
-                  onSelect('ai', 'hard');
+                  onSelectMode('ai', 'hard', 2);
                   onClose();
                 }}
                 className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
@@ -172,7 +246,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-400">
-                      Redoutable. Évalue tous les blocages possibles et maximise chaque tempo.
+                      Redoutable. Évalue tous les blocages et maximise le tempo.
                     </p>
                   </div>
                 </div>
@@ -182,6 +256,37 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                   </span>
                 )}
               </div>
+            </div>
+          </div>
+
+          {/* Section: Pendule Blitz */}
+          <div>
+            <div className="flex items-center gap-1.5 mb-2 px-1">
+              <Timer className="w-4 h-4 text-amber-400" />
+              <span className="text-xs font-extrabold tracking-wider uppercase text-slate-400">
+                Pendule Blitz (Temps par coup)
+              </span>
+            </div>
+
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { val: 0 as BlitzTimerSetting, label: 'Off' },
+                { val: 15 as BlitzTimerSetting, label: '15s' },
+                { val: 30 as BlitzTimerSetting, label: '30s' },
+                { val: 45 as BlitzTimerSetting, label: '45s' },
+              ].map((opt) => (
+                <button
+                  key={`timer-${opt.val}`}
+                  onClick={() => onSelectTimer(opt.val)}
+                  className={`py-2 px-1 rounded-xl text-xs font-bold border transition-all ${
+                    blitzTimer === opt.val
+                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+                      : 'bg-slate-800/60 hover:bg-slate-800 text-slate-400 border-slate-700/60'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
             </div>
           </div>
         </div>

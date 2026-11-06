@@ -54,11 +54,11 @@ export function areNeighbors(p1: Position, p2: Position): boolean {
 
 /**
  * Computes all legal pawn moves for a player at currentPosition,
- * given opponentPosition and placed walls.
+ * given all opponent positions (supporting 2 to 4 players) and placed walls.
  */
 export function getValidPawnMoves(
   currentPos: Position,
-  opponentPos: Position,
+  opponentPositions: Position[],
   walls: Wall[]
 ): Position[] {
   const validMoves: Position[] = [];
@@ -69,6 +69,9 @@ export function getValidPawnMoves(
     { dx: 1, dy: 0 },  // Right
   ];
 
+  const isOccupiedByOpponent = (pos: Position) =>
+    opponentPositions.some((op) => op.x === pos.x && op.y === pos.y);
+
   for (const dir of orthogonalDirections) {
     const target: Position = { x: currentPos.x + dir.dx, y: currentPos.y + dir.dy };
 
@@ -78,29 +81,30 @@ export function getValidPawnMoves(
     // Wall obstruction between current and target
     if (isMoveBlockedByWall(currentPos, target, walls)) continue;
 
-    // If opponent is NOT at target, this is a standard legal move
-    if (target.x !== opponentPos.x || target.y !== opponentPos.y) {
+    // If no opponent is at target, this is a standard legal move
+    if (!isOccupiedByOpponent(target)) {
       validMoves.push(target);
       continue;
     }
 
-    // Opponent is directly adjacent! Check jump moves:
+    // An opponent is at target! Check jump:
     const straightTarget: Position = {
-      x: opponentPos.x + dir.dx,
-      y: opponentPos.y + dir.dy,
+      x: target.x + dir.dx,
+      y: target.y + dir.dy,
     };
 
     const isStraightWithinBoard = isWithinBoard(straightTarget.x, straightTarget.y);
     const isStraightBlockedByWall =
       !isStraightWithinBoard ||
-      isMoveBlockedByWall(opponentPos, straightTarget, walls);
+      isMoveBlockedByWall(target, straightTarget, walls);
+    const isStraightOccupied = isOccupiedByOpponent(straightTarget);
 
-    if (isStraightWithinBoard && !isStraightBlockedByWall) {
+    if (isStraightWithinBoard && !isStraightBlockedByWall && !isStraightOccupied) {
       // Direct jump over opponent is legal
       validMoves.push(straightTarget);
     } else {
-      // Direct jump is blocked by a wall or board edge:
-      // Official rule: Player can jump diagonally to either perpendicular side
+      // Direct jump is blocked (wall, board edge, or another pawn):
+      // Player can jump diagonally to either perpendicular side
       const perpDirs =
         dir.dx === 0
           ? [
@@ -114,14 +118,14 @@ export function getValidPawnMoves(
 
       for (const perp of perpDirs) {
         const diagTarget: Position = {
-          x: opponentPos.x + perp.dx,
-          y: opponentPos.y + perp.dy,
+          x: target.x + perp.dx,
+          y: target.y + perp.dy,
         };
 
         if (!isWithinBoard(diagTarget.x, diagTarget.y)) continue;
 
-        // Diagonal jump requires moving from opponent cell to diagonal cell without wall obstruction
-        if (!isMoveBlockedByWall(opponentPos, diagTarget, walls)) {
+        // Diagonal jump requires no wall between opponent and diagonal target, and target not occupied
+        if (!isMoveBlockedByWall(target, diagTarget, walls) && !isOccupiedByOpponent(diagTarget)) {
           validMoves.push(diagTarget);
         }
       }
