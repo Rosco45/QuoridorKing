@@ -13,12 +13,14 @@ import type {
   BlitzTimerSetting,
   ThemeId,
   ReplayStep,
+  TargetGoal,
 } from './types/game';
 import { THEMES } from './types/themes';
 import {
   createInitialPlayers,
   hasPlayerReachedGoal,
   getNextPlayerId,
+  TARGET_GOALS,
 } from './engine/coordinates';
 import { getValidPawnMoves } from './engine/rules';
 import { validateWallPlacement, getShortestPathDistanceToGoal } from './engine/pathfinding';
@@ -53,17 +55,57 @@ interface SavedGameData {
   elapsedSeconds: number;
 }
 
+const sanitizeSavedPlayers = (
+  rawPlayers: Record<string, Partial<Player>>
+): Record<PlayerId, Player> | null => {
+  if (!rawPlayers || typeof rawPlayers !== 'object') return null;
+  const p1 = rawPlayers['1'] || rawPlayers[1];
+  const p2 = rawPlayers['2'] || rawPlayers[2];
+  if (!p1 || !p2 || !p1.position || !p2.position) return null;
+
+  const sanitized: Record<PlayerId, Player> = {} as Record<PlayerId, Player>;
+  for (const id of [1, 2, 3, 4] as PlayerId[]) {
+    const rawP = rawPlayers[id] || rawPlayers[String(id)];
+    if (rawP && rawP.position) {
+      sanitized[id] = {
+        id,
+        name: rawP.name || `Joueur ${id}`,
+        position: { x: rawP.position.x ?? 4, y: rawP.position.y ?? (id === 1 ? 8 : 0) },
+        wallsRemaining: typeof rawP.wallsRemaining === 'number' ? rawP.wallsRemaining : 10,
+        color: rawP.color || (id === 1 ? '#38bdf8' : id === 2 ? '#f97316' : id === 3 ? '#10b981' : '#a855f7'),
+        glowColor: rawP.glowColor || 'rgba(56, 189, 248, 0.4)',
+        targetGoal: rawP.targetGoal?.type ? (rawP.targetGoal as TargetGoal) : TARGET_GOALS[id],
+        isAI: !!rawP.isAI,
+      };
+    }
+  }
+  return sanitized;
+};
+
 const getInitialSavedGame = (): SavedGameData | null => {
   try {
     const raw = localStorage.getItem('quoridor_saved_game');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && parsed.players && parsed.activePlayerId && Array.isArray(parsed.walls)) {
-        return parsed;
+        const sanitized = sanitizeSavedPlayers(parsed.players);
+        if (sanitized) {
+          return {
+            ...parsed,
+            players: sanitized,
+            playerCount: parsed.playerCount === 4 ? 4 : 2,
+            replaySteps: Array.isArray(parsed.replaySteps) ? parsed.replaySteps : [],
+          };
+        }
       }
     }
   } catch {
     // Ignore error
+  }
+  try {
+    localStorage.removeItem('quoridor_saved_game');
+  } catch {
+    // ignore
   }
   return null;
 };
@@ -970,7 +1012,10 @@ export const App: React.FC = () => {
     [blitzTimer, showToast]
   );
 
-  const activePlayer = players[activePlayerId] || players[1];
+  const activePlayer =
+    players[activePlayerId] ||
+    players[1] ||
+    createInitialPlayers(playerCount, gameMode)[1];
 
   return (
     <main

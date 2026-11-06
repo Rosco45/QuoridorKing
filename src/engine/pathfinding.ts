@@ -8,9 +8,10 @@ import { checkWallGeometry, isMoveBlockedByWall, type WallValidationResult } fro
  */
 export function hasPathToGoal(
   start: Position,
-  goal: TargetGoal,
-  walls: Wall[]
+  goal?: TargetGoal,
+  walls: Wall[] = []
 ): boolean {
+  if (!start || !goal) return false;
   if (hasPlayerReachedGoal(start, goal)) return true;
 
   const visited = Array.from({ length: BOARD_SIZE }, () =>
@@ -64,9 +65,10 @@ export function hasPathToGoal(
  */
 export function getShortestPathDistanceToGoal(
   start: Position,
-  goal: TargetGoal,
-  walls: Wall[]
+  goal?: TargetGoal,
+  walls: Wall[] = []
 ): number {
+  if (!start || !goal) return -1;
   if (hasPlayerReachedGoal(start, goal)) return 0;
 
   const visited = Array.from({ length: BOARD_SIZE }, () =>
