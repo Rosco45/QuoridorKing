@@ -117,7 +117,11 @@ export const HUD: React.FC<HUDProps> = ({
   };
 
   const activePlayerList = (
-    playerCount === 4 ? ([1, 2, 3, 4] as PlayerId[]) : ([1, 2] as PlayerId[])
+    playerCount === 4
+      ? ([1, 2, 3, 4] as PlayerId[])
+      : playerCount === 3
+      ? ([1, 2, 3] as PlayerId[])
+      : ([1, 2] as PlayerId[])
   ).filter((id) => players[id]);
 
   return (
@@ -235,7 +239,11 @@ export const HUD: React.FC<HUDProps> = ({
       {/* Players Battle Cards */}
       <div
         className={`grid gap-1.5 ${
-          playerCount === 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2'
+          playerCount === 4
+            ? 'grid-cols-2 sm:grid-cols-4'
+            : playerCount === 3
+            ? 'grid-cols-3'
+            : 'grid-cols-2'
         }`}
       >
         {activePlayerList.map((pId) => {
@@ -266,8 +274,13 @@ export const HUD: React.FC<HUDProps> = ({
                   >
                     {pId}
                   </div>
-                  <span className="font-bold text-xs truncate text-slate-100">
-                    {p.name}
+                  <span className="font-bold text-xs truncate text-slate-100 flex items-center gap-1">
+                    <span className="truncate">{p.name}</span>
+                    {p.isAI && (
+                      <span className="text-[9px] px-1 py-0 rounded bg-slate-800 text-slate-400 border border-slate-700 shrink-0">
+                        Bot
+                      </span>
+                    )}
                     {isMyOnlineTurn && <span className="text-[10px] text-sky-300 ml-1">(Vous)</span>}
                   </span>
                 </div>
@@ -287,14 +300,21 @@ export const HUD: React.FC<HUDProps> = ({
                       </span>
                     )}
                     <span
-                      className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded border animate-pulse"
+                      className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded border animate-pulse flex items-center gap-1"
                       style={{
                         backgroundColor: `${config.color}20`,
                         color: config.color,
                         borderColor: `${config.color}50`,
                       }}
                     >
-                      {gameMode === 'ai' && pId === 2 && isAIThinking ? 'IA...' : 'Tour'}
+                      {p.isAI && isAIThinking ? (
+                        <>
+                          <Bot className="w-2.5 h-2.5 animate-spin" />
+                          <span>Réflexion...</span>
+                        </>
+                      ) : (
+                        'Tour'
+                      )}
                     </span>
                   </div>
                 )}

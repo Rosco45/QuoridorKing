@@ -43,12 +43,19 @@ export function hasPlayerReachedGoal(pos: Position, goal?: TargetGoal): boolean 
 /**
  * Returns the next player in turn order.
  * In 2-player mode: 1 -> 2 -> 1
+ * In 3-player mode: clockwise around the board (P1 Bottom -> P3 Left -> P2 Top):
+ * 1 (Bottom) -> 3 (Left) -> 2 (Top) -> 1 (Bottom)
  * In 4-player mode: clockwise around the board:
  * 1 (Bottom) -> 3 (Left) -> 2 (Top) -> 4 (Right) -> 1 (Bottom)
  */
 export function getNextPlayerId(current: PlayerId, playerCount: PlayerCount): PlayerId {
   if (playerCount === 2) {
     return current === 1 ? 2 : 1;
+  }
+  if (playerCount === 3) {
+    const order3p: PlayerId[] = [1, 3, 2];
+    const idx = order3p.indexOf(current);
+    return order3p[(idx + 1) % order3p.length];
   }
   const clockwiseOrder: PlayerId[] = [1, 3, 2, 4];
   const idx = clockwiseOrder.indexOf(current);
@@ -58,15 +65,16 @@ export function getNextPlayerId(current: PlayerId, playerCount: PlayerCount): Pl
 export function createInitialPlayers(
   playerCount: PlayerCount,
   gameMode: 'pass-and-play' | 'ai' | 'online',
-  customNames?: Partial<Record<PlayerId, string>>
+  customNames?: Partial<Record<PlayerId, string>>,
+  customSlots?: Record<PlayerId, { type: 'human' | 'bot'; name: string; difficulty: import('../types/game').AIDifficulty }>
 ): Record<PlayerId, Player> {
   const wallsCount = playerCount === 2 ? MAX_WALLS_2P : MAX_WALLS_4P;
 
   const defaultNames: Record<PlayerId, string> = {
-    1: customNames?.[1] || 'Joueur 1 (Bleu)',
-    2: customNames?.[2] || (gameMode === 'ai' ? 'IA King' : 'Joueur 2 (Orange)'),
-    3: customNames?.[3] || 'Joueur 3 (Vert)',
-    4: customNames?.[4] || 'Joueur 4 (Violet)',
+    1: customNames?.[1] || (customSlots?.[1]?.name) || 'Joueur 1 (Bleu)',
+    2: customNames?.[2] || (customSlots?.[2]?.name) || (gameMode === 'ai' ? 'Bot Alpha' : 'Joueur 2 (Orange)'),
+    3: customNames?.[3] || (customSlots?.[3]?.name) || (gameMode === 'ai' ? 'Bot Titan' : 'Joueur 3 (Vert)'),
+    4: customNames?.[4] || (customSlots?.[4]?.name) || (gameMode === 'ai' ? 'Bot Orion' : 'Joueur 4 (Violet)'),
   };
 
   const colors: Record<PlayerId, { color: string; glow: string }> = {
@@ -78,9 +86,13 @@ export function createInitialPlayers(
 
   const players: Partial<Record<PlayerId, Player>> = {};
 
-  const activeIds: PlayerId[] = playerCount === 2 ? [1, 2] : [1, 2, 3, 4];
+  const activeIds: PlayerId[] = playerCount === 2 ? [1, 2] : playerCount === 3 ? [1, 2, 3] : [1, 2, 3, 4];
 
   for (const id of activeIds) {
+    const slot = customSlots?.[id];
+    const isAI = slot ? slot.type === 'bot' : (gameMode === 'ai' && id !== 1);
+    const aiDifficulty = slot?.difficulty;
+
     players[id] = {
       id,
       name: defaultNames[id],
@@ -89,7 +101,8 @@ export function createInitialPlayers(
       color: colors[id].color,
       glowColor: colors[id].glow,
       targetGoal: TARGET_GOALS[id],
-      isAI: gameMode === 'ai' && id !== 1,
+      isAI,
+      aiDifficulty,
     };
   }
 

@@ -1,6 +1,6 @@
 export type PlayerId = 1 | 2 | 3 | 4;
 
-export type PlayerCount = 2 | 4;
+export type PlayerCount = 2 | 3 | 4;
 
 export type WallOrientation = 'horizontal' | 'vertical';
 
@@ -33,6 +33,13 @@ export interface TargetGoal {
   description: string;
 }
 
+export interface PlayerSlotConfig {
+  id: PlayerId;
+  type: 'human' | 'bot';
+  name: string;
+  difficulty: AIDifficulty;
+}
+
 export interface Player {
   id: PlayerId;
   name: string;
@@ -42,6 +49,7 @@ export interface Player {
   glowColor: string;
   targetGoal: TargetGoal;
   isAI?: boolean;
+  aiDifficulty?: AIDifficulty;
 }
 
 export type ActionMode = 'pawn' | 'wall';

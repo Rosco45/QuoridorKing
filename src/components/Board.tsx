@@ -15,6 +15,7 @@ interface BoardProps {
   currentMode: ActionMode;
   selectedOrientation: WallOrientation;
   theme?: ThemeConfig;
+  lastBotAction?: { type: 'move' | 'wall'; position?: Position; wall?: { x: number; y: number; orientation: WallOrientation } } | null;
   onCellClick: (x: number, y: number) => void;
   onIntersectionClick: (x: number, y: number) => void;
   onConfirmWall: () => void;
@@ -30,6 +31,7 @@ export const Board: React.FC<BoardProps> = ({
   currentMode,
   selectedOrientation: _selectedOrientation,
   theme = THEMES.wood,
+  lastBotAction,
   onCellClick,
   onIntersectionClick,
   onConfirmWall,
@@ -152,28 +154,28 @@ export const Board: React.FC<BoardProps> = ({
           className="pointer-events-none"
         />
 
-        {/* 4-Player Goal Areas (P3 right col x=8, P4 left col x=0) */}
+        {/* 3 & 4-Player Goal Areas (P3 right col x=8, P4 left col x=0) */}
+        {playerCount >= 3 && (
+          <rect
+            x={PADDING + 8 * STEP}
+            y={PADDING}
+            width={CELL_SIZE + 8}
+            height={9 * CELL_SIZE + 8 * GROOVE_SIZE}
+            rx={8}
+            fill="url(#p3GoalGlow)"
+            className="pointer-events-none"
+          />
+        )}
         {playerCount === 4 && (
-          <>
-            <rect
-              x={PADDING + 8 * STEP}
-              y={PADDING}
-              width={CELL_SIZE + 8}
-              height={9 * CELL_SIZE + 8 * GROOVE_SIZE}
-              rx={8}
-              fill="url(#p3GoalGlow)"
-              className="pointer-events-none"
-            />
-            <rect
-              x={PADDING - 8}
-              y={PADDING}
-              width={CELL_SIZE + 8}
-              height={9 * CELL_SIZE + 8 * GROOVE_SIZE}
-              rx={8}
-              fill="url(#p4GoalGlow)"
-              className="pointer-events-none"
-            />
-          </>
+          <rect
+            x={PADDING - 8}
+            y={PADDING}
+            width={CELL_SIZE + 8}
+            height={9 * CELL_SIZE + 8 * GROOVE_SIZE}
+            rx={8}
+            fill="url(#p4GoalGlow)"
+            className="pointer-events-none"
+          />
         )}
 
         {/* Column Coordinates Labels (A - I) */}
@@ -233,7 +235,7 @@ export const Board: React.FC<BoardProps> = ({
                 isValidMove={isValidMove}
                 isP1GoalRow={y === 0}
                 isP2GoalRow={y === 8}
-                isP3GoalCol={playerCount === 4 && x === 8}
+                isP3GoalCol={playerCount >= 3 && x === 8}
                 isP4GoalCol={playerCount === 4 && x === 0}
                 theme={theme}
                 onSelect={onCellClick}
@@ -342,6 +344,20 @@ export const Board: React.FC<BoardProps> = ({
             cellSize={CELL_SIZE}
             grooveSize={GROOVE_SIZE}
             padding={PADDING}
+          />
+        )}
+
+        {/* Bot Last Action Highlight Indicator */}
+        {lastBotAction && lastBotAction.type === 'move' && lastBotAction.position && (
+          <circle
+            cx={PADDING + lastBotAction.position.x * STEP + CELL_SIZE / 2}
+            cy={PADDING + lastBotAction.position.y * STEP + CELL_SIZE / 2}
+            r={CELL_SIZE / 2 - 2}
+            fill="none"
+            stroke="#38bdf8"
+            strokeWidth="3"
+            strokeDasharray="4 4"
+            className="animate-spin pointer-events-none opacity-80"
           />
         )}
       </svg>

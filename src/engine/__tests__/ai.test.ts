@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { computeAIMove } from '../ai';
-import { TARGET_GOALS } from '../coordinates';
-import type { Player } from '../../types/game';
+import { quoridorAI } from '../QuoridorAI';
+import { TARGET_GOALS, createInitialPlayers } from '../coordinates';
+import type { Player, Wall } from '../../types/game';
+import { validateWallPlacement } from '../pathfinding';
 
 describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
   const baseHuman: Player = {
@@ -65,5 +67,68 @@ describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
 
     const action = computeAIMove(baseAI, nearWinHuman, [], 'hard');
     expect(action.type).toBe('wall');
+  });
+
+  it('supports 3 players mode with QuoridorAI', () => {
+    const players3p = createInitialPlayers(3, 'ai');
+    const bot = players3p[2]; // Slot 2 is Bot
+    const allPlayers = Object.values(players3p);
+
+    const action = quoridorAI.computeAction(bot, allPlayers, [], 'hard');
+    expect(action).toBeDefined();
+
+    if (action.type === 'move') {
+      expect(action.to).toBeDefined();
+    } else {
+      // If AI placed a wall, it MUST be valid for all 3 players under Golden Rule
+      const validation = validateWallPlacement(
+        action.x,
+        action.y,
+        action.orientation,
+        [],
+        allPlayers
+      );
+      expect(validation.isValid).toBe(true);
+    }
+  });
+
+  it('supports 4 players mode with QuoridorAI and multiple bots', () => {
+    const players4p = createInitialPlayers(4, 'ai');
+    const bot3 = players4p[3]; // Slot 3 Bot Titan
+    const allPlayers = Object.values(players4p);
+
+    const action = quoridorAI.computeAction(bot3, allPlayers, [], 'medium');
+    expect(action).toBeDefined();
+
+    if (action.type === 'wall') {
+      const validation = validateWallPlacement(
+        action.x,
+        action.y,
+        action.orientation,
+        [],
+        allPlayers
+      );
+      expect(validation.isValid).toBe(true);
+    }
+  });
+
+  it('respects the Golden Rule and never places an illegal blocking wall in 3-player or 4-player game', () => {
+    const players3p = createInitialPlayers(3, 'ai');
+    const bot = players3p[3]; // Player 3 (Left to Right)
+    const allPlayers = Object.values(players3p);
+
+    // Provide existing walls that almost trap a player
+    const walls: Wall[] = [
+      { id: 'w1', x: 0, y: 3, orientation: 'horizontal', placedBy: 1 },
+      { id: 'w2', x: 0, y: 4, orientation: 'horizontal', placedBy: 1 },
+    ];
+
+    const action = quoridorAI.computeAction(bot, allPlayers, walls, 'hard');
+    expect(action).toBeDefined();
+
+    if (action.type === 'wall') {
+      const val = validateWallPlacement(action.x, action.y, action.orientation, walls, allPlayers);
+      expect(val.isValid).toBe(true);
+    }
   });
 });

@@ -24,7 +24,7 @@ import {
 } from './engine/coordinates';
 import { getValidPawnMoves } from './engine/rules';
 import { validateWallPlacement, getShortestPathDistanceToGoal } from './engine/pathfinding';
-import { computeAIMove } from './engine/ai';
+import { quoridorAI } from './engine/QuoridorAI';
 import { soundManager } from './engine/sounds';
 import { hapticManager } from './engine/haptics';
 import { multiplayerService } from './engine/multiplayer';
@@ -224,6 +224,11 @@ export const App: React.FC = () => {
   const [selectedOrientation, setSelectedOrientation] = useState<WallOrientation>('horizontal');
   const [wallPreview, setWallPreview] = useState<WallPreview | null>(null);
   const [isAIThinking, setIsAIThinking] = useState<boolean>(false);
+  const [lastBotAction, setLastBotAction] = useState<{
+    type: 'move' | 'wall';
+    position?: Position;
+    wall?: { x: number; y: number; orientation: WallOrientation };
+  } | null>(null);
   const aiTimeoutRef = useRef<number | null>(null);
 
   const [dockSide, setDockSide] = useState<'right' | 'left'>(() => {
@@ -368,14 +373,20 @@ export const App: React.FC = () => {
 
   // Reset function
   const resetGame = useCallback(
-    (count: PlayerCount, mode: GameMode, diff: AIDifficulty = aiDifficulty) => {
+    (
+      count: PlayerCount,
+      mode: GameMode,
+      diff: AIDifficulty = aiDifficulty,
+      customSlots?: Record<PlayerId, import('./types/game').PlayerSlotConfig>
+    ) => {
       if (aiTimeoutRef.current) {
         clearTimeout(aiTimeoutRef.current);
         aiTimeoutRef.current = null;
       }
       setIsAIThinking(false);
+      setLastBotAction(null);
 
-      const freshPlayers = createInitialPlayers(count, mode);
+      const freshPlayers = createInitialPlayers(count, mode, undefined, customSlots);
       setPlayerCount(count);
       setGameMode(mode);
       setAiDifficulty(diff);
@@ -405,7 +416,12 @@ export const App: React.FC = () => {
   // Distance calculations
   const distances = useMemo(() => {
     const distMap: Record<PlayerId, number> = { 1: -1, 2: -1, 3: -1, 4: -1 };
-    const pList = playerCount === 4 ? ([1, 2, 3, 4] as PlayerId[]) : ([1, 2] as PlayerId[]);
+    const pList =
+      playerCount === 4
+        ? ([1, 2, 3, 4] as PlayerId[])
+        : playerCount === 3
+        ? ([1, 2, 3] as PlayerId[])
+        : ([1, 2] as PlayerId[]);
     for (const id of pList) {
       if (players[id]) {
         distMap[id] = getShortestPathDistanceToGoal(
@@ -869,50 +885,66 @@ export const App: React.FC = () => {
     hapticManager.vibrateTap();
   }, []);
 
-  // --- AI Autonomous Loop ---
+  // --- AI Autonomous Loop (Supports 2, 3, or 4 Players with Multiple / Mixed Bots) ---
   useEffect(() => {
-    if (gameMode !== 'ai' || activePlayerId !== 2 || winner !== null || isPaused) {
+    if (winner !== null || isPaused) return;
+
+    const currentActivePlayer = players[activePlayerId];
+    if (!currentActivePlayer || !currentActivePlayer.isAI) {
       return;
     }
 
     setIsAIThinking(true);
-    const delay = aiDifficulty === 'hard' ? 650 : 500;
+    const difficulty = currentActivePlayer.aiDifficulty || aiDifficulty;
+    // Simulated thinking delay (400ms to 800ms)
+    const delay = difficulty === 'hard' ? 700 : difficulty === 'medium' ? 550 : 450;
 
     aiTimeoutRef.current = window.setTimeout(() => {
-      const action = computeAIMove(players[2], players[1], walls, aiDifficulty);
+      const activePlayersList = Object.values(players);
+      const action = quoridorAI.computeAction(
+        currentActivePlayer,
+        activePlayersList,
+        walls,
+        difficulty
+      );
 
       if (action.type === 'move') {
-        const fromPos = { ...players[2].position };
+        const fromPos = { ...currentActivePlayer.position };
         const toPos = action.to;
 
         const step = createReplayStep(
           'move',
-          2,
-          `IA King avance en ${String.fromCharCode(65 + toPos.x)}${toPos.y + 1}`,
+          activePlayerId,
+          `${currentActivePlayer.name} avance en ${String.fromCharCode(65 + toPos.x)}${toPos.y + 1}`,
           fromPos,
           toPos
         );
         setReplaySteps((prev) => [...prev, step]);
 
-        const hasWon = hasPlayerReachedGoal(toPos, players[2].targetGoal);
+        const hasWon = hasPlayerReachedGoal(toPos, currentActivePlayer.targetGoal);
 
         setPlayers((prev) => ({
           ...prev,
-          2: {
-            ...prev[2],
+          [activePlayerId]: {
+            ...prev[activePlayerId],
             position: toPos,
           },
         }));
 
+        setLastBotAction({ type: 'move', position: toPos });
+
         if (hasWon) {
-          setWinner(2);
+          setWinner(activePlayerId);
           soundManager.playVictory();
           hapticManager.vibrateVictory();
         } else {
           soundManager.playMove();
           hapticManager.vibrateMove();
-          setActivePlayerId(1);
-          setTurnCount((prev) => prev + 1);
+          const nextId = getNextPlayerId(activePlayerId, playerCount);
+          setActivePlayerId(nextId);
+          if (nextId === 1) {
+            setTurnCount((prev) => prev + 1);
+          }
         }
       } else {
         const newWall: Wall = {
@@ -920,13 +952,13 @@ export const App: React.FC = () => {
           x: action.x,
           y: action.y,
           orientation: action.orientation,
-          placedBy: 2,
+          placedBy: activePlayerId,
         };
 
         const step = createReplayStep(
           'wall',
-          2,
-          `IA King pose un mur en (${action.x}, ${action.y})`,
+          activePlayerId,
+          `${currentActivePlayer.name} pose un mur en (${action.x}, ${action.y})`,
           undefined,
           undefined,
           newWall
@@ -936,24 +968,29 @@ export const App: React.FC = () => {
         setWalls((prev) => [...prev, newWall]);
         setPlayers((prev) => ({
           ...prev,
-          2: {
-            ...prev[2],
-            wallsRemaining: prev[2].wallsRemaining - 1,
+          [activePlayerId]: {
+            ...prev[activePlayerId],
+            wallsRemaining: prev[activePlayerId].wallsRemaining - 1,
           },
         }));
+
+        setLastBotAction({ type: 'wall', wall: newWall });
 
         soundManager.playWallPlace();
         hapticManager.vibrateWallPlaced();
         showToast(
           'info',
-          "L'IA a posé un mur !",
+          `${currentActivePlayer.name} a posé un mur !`,
           `Mur ${action.orientation === 'horizontal' ? 'horizontal' : 'vertical'} en ${String.fromCharCode(
             65 + action.x
           )}${action.y + 1}`
         );
 
-        setActivePlayerId(1);
-        setTurnCount((prev) => prev + 1);
+        const nextId = getNextPlayerId(activePlayerId, playerCount);
+        setActivePlayerId(nextId);
+        if (nextId === 1) {
+          setTurnCount((prev) => prev + 1);
+        }
       }
 
       setIsAIThinking(false);
@@ -967,13 +1004,13 @@ export const App: React.FC = () => {
       }
     };
   }, [
-    gameMode,
     activePlayerId,
     winner,
     isPaused,
     players,
     walls,
     aiDifficulty,
+    playerCount,
     createReplayStep,
     showToast,
   ]);
@@ -1136,8 +1173,8 @@ export const App: React.FC = () => {
         currentDifficulty={aiDifficulty}
         playerCount={playerCount}
         blitzTimer={blitzTimer}
-        onSelectMode={(mode, diff, count) => {
-          resetGame(count, mode, diff);
+        onSelectMode={(mode, diff, count, customSlots) => {
+          resetGame(count, mode, diff, customSlots);
         }}
         onSelectTimer={(t) => {
           setBlitzTimer(t);
@@ -1243,6 +1280,7 @@ export const App: React.FC = () => {
               currentMode={currentMode}
               selectedOrientation={selectedOrientation}
               theme={currentTheme}
+              lastBotAction={lastBotAction}
               onCellClick={handleCellClick}
               onIntersectionClick={handleIntersectionClick}
               onConfirmWall={handleConfirmWall}
@@ -1260,7 +1298,7 @@ export const App: React.FC = () => {
             disabled={
               isAIThinking ||
               isPaused ||
-              (gameMode === 'ai' && activePlayerId === 2) ||
+              (activePlayer?.isAI ?? false) ||
               (gameMode === 'online' && onlinePlayerId !== activePlayerId)
             }
             onSetMode={(mode) => {
