@@ -2,6 +2,8 @@ export type PlayerId = 1 | 2 | 3 | 4;
 
 export type PlayerCount = 2 | 3 | 4;
 
+export type VictoryCondition = 'classic' | 'vortex'; // 'classic' = opposite border, 'vortex' = central cell (4,4)
+
 export type WallOrientation = 'horizontal' | 'vertical';
 
 export type GameMode = 'pass-and-play' | 'ai' | 'online';
@@ -25,11 +27,12 @@ export interface Wall {
   placedBy: PlayerId;
 }
 
-export type TargetGoalType = 'row' | 'col';
+export type TargetGoalType = 'row' | 'col' | 'cell';
 
 export interface TargetGoal {
   type: TargetGoalType;
-  value: number; // row index or column index
+  value: number; // row index or column index (or unused if cell)
+  targetCell?: Position; // for vortex mode: e.g. { x: 4, y: 4 }
   description: string;
 }
 

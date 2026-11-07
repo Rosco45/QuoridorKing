@@ -12,6 +12,7 @@ interface HUDProps {
   distances: Record<PlayerId, number>;
   gameMode: GameMode;
   aiDifficulty: AIDifficulty;
+  victoryCondition?: import('../types/game').VictoryCondition;
   isAIThinking: boolean;
   blitzTimer: BlitzTimerSetting;
   turnSecondsLeft: number;
@@ -36,6 +37,7 @@ export const HUD: React.FC<HUDProps> = ({
   distances,
   gameMode,
   aiDifficulty,
+  victoryCondition = 'classic',
   isAIThinking,
   blitzTimer,
   turnSecondsLeft,
@@ -159,6 +161,11 @@ export const HUD: React.FC<HUDProps> = ({
               <>
                 <Bot className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                 <span className="truncate">{difficultyLabels[aiDifficulty].label}</span>
+                {victoryCondition === 'vortex' && (
+                  <span className="text-[9px] px-1 py-0 rounded bg-amber-400 text-slate-950 font-black">
+                    Vortex
+                  </span>
+                )}
               </>
             ) : gameMode === 'online' ? (
               <>
@@ -169,6 +176,11 @@ export const HUD: React.FC<HUDProps> = ({
               <>
                 <Users className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                 <span>{playerCount}J</span>
+                {victoryCondition === 'vortex' && (
+                  <span className="text-[9px] px-1 py-0 rounded bg-amber-400 text-slate-950 font-black">
+                    Vortex
+                  </span>
+                )}
               </>
             )}
             <span className="text-[9px] opacity-60">▾</span>

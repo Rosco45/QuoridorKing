@@ -16,6 +16,7 @@ interface CellProps {
   isP2GoalRow?: boolean;
   isP3GoalCol?: boolean;
   isP4GoalCol?: boolean;
+  isVortexCenter?: boolean;
   theme?: ThemeConfig;
   onSelect: (x: number, y: number) => void;
 }
@@ -33,6 +34,7 @@ export const Cell: React.FC<CellProps> = ({
   isP2GoalRow,
   isP3GoalCol,
   isP4GoalCol,
+  isVortexCenter,
   theme = THEMES.wood,
   onSelect,
 }) => {
@@ -135,6 +137,48 @@ export const Cell: React.FC<CellProps> = ({
           strokeLinecap="round"
           opacity={0.7}
         />
+      )}
+
+      {/* Vortex Center Marker (Glowing spiral/swirl target) */}
+      {isVortexCenter && (
+        <g className="pointer-events-none">
+          {/* Subtle Outer Pulsing Ring */}
+          <circle
+            cx={centerX}
+            cy={centerY}
+            r={size * 0.42}
+            fill="none"
+            stroke="url(#vortexSpiralGrad)"
+            strokeWidth="2"
+            strokeDasharray="4 3"
+            className="animate-spin"
+            style={{ transformOrigin: `${centerX}px ${centerY}px`, animationDuration: '6s' }}
+          />
+          {/* Inner Glow Core */}
+          <circle
+            cx={centerX}
+            cy={centerY}
+            r={size * 0.28}
+            fill="rgba(245, 158, 11, 0.15)"
+            stroke="#f59e0b"
+            strokeWidth="1.5"
+          />
+          {/* Vortex Center Emblem / Star icon */}
+          <polygon
+            points={`
+              ${centerX},${centerY - 8}
+              ${centerX + 2.5},${centerY - 2.5}
+              ${centerX + 8},${centerY}
+              ${centerX + 2.5},${centerY + 2.5}
+              ${centerX},${centerY + 8}
+              ${centerX - 2.5},${centerY + 2.5}
+              ${centerX - 8},${centerY}
+              ${centerX - 2.5},${centerY - 2.5}
+            `}
+            fill="#fbbf24"
+            opacity={0.9}
+          />
+        </g>
       )}
 
       {/* Valid Move Indicator (pulsing target ring & dot) */}

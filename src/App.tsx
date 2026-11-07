@@ -174,6 +174,15 @@ export const App: React.FC = () => {
     }
   });
 
+  const [victoryCondition, setVictoryCondition] = useState<import('./types/game').VictoryCondition>(() => {
+    try {
+      const saved = localStorage.getItem('quoridor_victory_condition');
+      return saved === 'vortex' ? 'vortex' : 'classic';
+    } catch {
+      return 'classic';
+    }
+  });
+
   const [blitzTimer, setBlitzTimer] = useState<BlitzTimerSetting>(() => {
     try {
       const saved = localStorage.getItem('quoridor_blitz_timer');
@@ -377,7 +386,8 @@ export const App: React.FC = () => {
       count: PlayerCount,
       mode: GameMode,
       diff: AIDifficulty = aiDifficulty,
-      customSlots?: Record<PlayerId, import('./types/game').PlayerSlotConfig>
+      customSlots?: Record<PlayerId, import('./types/game').PlayerSlotConfig>,
+      condition: import('./types/game').VictoryCondition = count >= 3 ? victoryCondition : 'classic'
     ) => {
       if (aiTimeoutRef.current) {
         clearTimeout(aiTimeoutRef.current);
@@ -386,7 +396,15 @@ export const App: React.FC = () => {
       setIsAIThinking(false);
       setLastBotAction(null);
 
-      const freshPlayers = createInitialPlayers(count, mode, undefined, customSlots);
+      const resolvedCondition = count >= 3 ? condition : 'classic';
+      setVictoryCondition(resolvedCondition);
+      try {
+        localStorage.setItem('quoridor_victory_condition', resolvedCondition);
+      } catch {
+        // ignore
+      }
+
+      const freshPlayers = createInitialPlayers(count, mode, undefined, customSlots, resolvedCondition);
       setPlayerCount(count);
       setGameMode(mode);
       setAiDifficulty(diff);
@@ -410,7 +428,7 @@ export const App: React.FC = () => {
         // ignore
       }
     },
-    [aiDifficulty, blitzTimer]
+    [aiDifficulty, blitzTimer, victoryCondition]
   );
 
   // Distance calculations
@@ -1172,9 +1190,10 @@ export const App: React.FC = () => {
         currentMode={gameMode}
         currentDifficulty={aiDifficulty}
         playerCount={playerCount}
+        victoryCondition={victoryCondition}
         blitzTimer={blitzTimer}
-        onSelectMode={(mode, diff, count, customSlots) => {
-          resetGame(count, mode, diff, customSlots);
+        onSelectMode={(mode, diff, count, customSlots, condition) => {
+          resetGame(count, mode, diff, customSlots, condition);
         }}
         onSelectTimer={(t) => {
           setBlitzTimer(t);
@@ -1246,6 +1265,7 @@ export const App: React.FC = () => {
         distances={distances}
         gameMode={gameMode}
         aiDifficulty={aiDifficulty}
+        victoryCondition={victoryCondition}
         isAIThinking={isAIThinking}
         blitzTimer={blitzTimer}
         turnSecondsLeft={turnSecondsLeft}
@@ -1280,6 +1300,7 @@ export const App: React.FC = () => {
               currentMode={currentMode}
               selectedOrientation={selectedOrientation}
               theme={currentTheme}
+              victoryCondition={victoryCondition}
               lastBotAction={lastBotAction}
               onCellClick={handleCellClick}
               onIntersectionClick={handleIntersectionClick}

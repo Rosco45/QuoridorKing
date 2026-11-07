@@ -1,9 +1,11 @@
-import type { PlayerId, PlayerCount, Position, TargetGoal, Player } from '../types/game';
+import type { PlayerId, PlayerCount, Position, TargetGoal, Player, VictoryCondition } from '../types/game';
 
 export const BOARD_SIZE = 9;
 export const INTERSECTIONS_SIZE = 8;
 export const MAX_WALLS_2P = 10;
 export const MAX_WALLS_4P = 5;
+
+export const VORTEX_CENTER_CELL: Position = { x: 4, y: 4 };
 
 export const INITIAL_POSITIONS: Record<PlayerId, Position> = {
   1: { x: 4, y: 8 }, // Player 1 (Bottom): targets row 0
@@ -17,6 +19,13 @@ export const TARGET_GOALS: Record<PlayerId, TargetGoal> = {
   2: { type: 'row', value: 8, description: 'Ligne Bas (9)' },
   3: { type: 'col', value: 8, description: 'Colonne Droite (I)' },
   4: { type: 'col', value: 0, description: 'Colonne Gauche (A)' },
+};
+
+export const VORTEX_GOAL: TargetGoal = {
+  type: 'cell',
+  value: 4,
+  targetCell: { x: 4, y: 4 },
+  description: 'Vortex Central (E5)',
 };
 
 export function isWithinBoard(x: number, y: number): boolean {
@@ -33,6 +42,10 @@ export function arePositionsEqual(p1: Position, p2: Position): boolean {
 
 export function hasPlayerReachedGoal(pos: Position, goal?: TargetGoal): boolean {
   if (!goal || !pos) return false;
+  if (goal.type === 'cell') {
+    const target = goal.targetCell || VORTEX_CENTER_CELL;
+    return pos.x === target.x && pos.y === target.y;
+  }
   if (goal.type === 'row') {
     return pos.y === goal.value;
   } else {
@@ -66,7 +79,8 @@ export function createInitialPlayers(
   playerCount: PlayerCount,
   gameMode: 'pass-and-play' | 'ai' | 'online',
   customNames?: Partial<Record<PlayerId, string>>,
-  customSlots?: Record<PlayerId, { type: 'human' | 'bot'; name: string; difficulty: import('../types/game').AIDifficulty }>
+  customSlots?: Record<PlayerId, { type: 'human' | 'bot'; name: string; difficulty: import('../types/game').AIDifficulty }>,
+  victoryCondition: VictoryCondition = 'classic'
 ): Record<PlayerId, Player> {
   const wallsCount = playerCount === 2 ? MAX_WALLS_2P : MAX_WALLS_4P;
 
@@ -100,7 +114,7 @@ export function createInitialPlayers(
       wallsRemaining: wallsCount,
       color: colors[id].color,
       glowColor: colors[id].glow,
-      targetGoal: TARGET_GOALS[id],
+      targetGoal: victoryCondition === 'vortex' ? { ...VORTEX_GOAL } : TARGET_GOALS[id],
       isAI,
       aiDifficulty,
     };

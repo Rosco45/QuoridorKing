@@ -1,5 +1,5 @@
 import React from 'react';
-import type { ActionMode, Player, PlayerId, PlayerCount, Position, Wall as WallType, WallOrientation, WallPreview } from '../types/game';
+import type { ActionMode, Player, PlayerId, PlayerCount, Position, Wall as WallType, WallOrientation, WallPreview, VictoryCondition } from '../types/game';
 import type { ThemeConfig } from '../types/themes';
 import { THEMES } from '../types/themes';
 import { Cell } from './Cell';
@@ -15,6 +15,7 @@ interface BoardProps {
   currentMode: ActionMode;
   selectedOrientation: WallOrientation;
   theme?: ThemeConfig;
+  victoryCondition?: VictoryCondition;
   lastBotAction?: { type: 'move' | 'wall'; position?: Position; wall?: { x: number; y: number; orientation: WallOrientation } } | null;
   onCellClick: (x: number, y: number) => void;
   onIntersectionClick: (x: number, y: number) => void;
@@ -31,6 +32,7 @@ export const Board: React.FC<BoardProps> = ({
   currentMode,
   selectedOrientation: _selectedOrientation,
   theme = THEMES.wood,
+  victoryCondition = 'classic',
   lastBotAction,
   onCellClick,
   onIntersectionClick,
@@ -104,6 +106,13 @@ export const Board: React.FC<BoardProps> = ({
             <stop offset="50%" stopColor={theme.accentP4} stopOpacity="0.3" />
             <stop offset="100%" stopColor="transparent" />
           </linearGradient>
+
+          {/* Vortex Spiral Gradient */}
+          <linearGradient id="vortexSpiralGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.9" />
+            <stop offset="50%" stopColor="#ec4899" stopOpacity="0.8" />
+            <stop offset="100%" stopColor="#38bdf8" stopOpacity="0.9" />
+          </linearGradient>
         </defs>
 
         {/* Board Outer Frame & Shadow */}
@@ -132,30 +141,34 @@ export const Board: React.FC<BoardProps> = ({
           strokeWidth="1"
         />
 
-        {/* Player 1 Goal Area Glow (Top row y=0 is target for P1) */}
-        <rect
-          x={PADDING}
-          y={PADDING - 8}
-          width={9 * CELL_SIZE + 8 * GROOVE_SIZE}
-          height={CELL_SIZE + 8}
-          rx={8}
-          fill="url(#p1GoalGlow)"
-          className="pointer-events-none"
-        />
+        {/* Player 1 Goal Area Glow (Top row y=0 is target for P1 in classic mode) */}
+        {victoryCondition === 'classic' && (
+          <rect
+            x={PADDING}
+            y={PADDING - 8}
+            width={9 * CELL_SIZE + 8 * GROOVE_SIZE}
+            height={CELL_SIZE + 8}
+            rx={8}
+            fill="url(#p1GoalGlow)"
+            className="pointer-events-none"
+          />
+        )}
 
-        {/* Player 2 Goal Area Glow (Bottom row y=8 is target for P2) */}
-        <rect
-          x={PADDING}
-          y={PADDING + 8 * STEP}
-          width={9 * CELL_SIZE + 8 * GROOVE_SIZE}
-          height={CELL_SIZE + 8}
-          rx={8}
-          fill="url(#p2GoalGlow)"
-          className="pointer-events-none"
-        />
+        {/* Player 2 Goal Area Glow (Bottom row y=8 is target for P2 in classic mode) */}
+        {victoryCondition === 'classic' && (
+          <rect
+            x={PADDING}
+            y={PADDING + 8 * STEP}
+            width={9 * CELL_SIZE + 8 * GROOVE_SIZE}
+            height={CELL_SIZE + 8}
+            rx={8}
+            fill="url(#p2GoalGlow)"
+            className="pointer-events-none"
+          />
+        )}
 
-        {/* 3 & 4-Player Goal Areas (P3 right col x=8, P4 left col x=0) */}
-        {playerCount >= 3 && (
+        {/* 3 & 4-Player Goal Areas (P3 right col x=8, P4 left col x=0 in classic mode) */}
+        {victoryCondition === 'classic' && playerCount >= 3 && (
           <rect
             x={PADDING + 8 * STEP}
             y={PADDING}
@@ -166,7 +179,7 @@ export const Board: React.FC<BoardProps> = ({
             className="pointer-events-none"
           />
         )}
-        {playerCount === 4 && (
+        {victoryCondition === 'classic' && playerCount === 4 && (
           <rect
             x={PADDING - 8}
             y={PADDING}
@@ -233,10 +246,11 @@ export const Board: React.FC<BoardProps> = ({
                 playerOnCell={playerOnCell}
                 isActivePlayerPawn={isActivePawn}
                 isValidMove={isValidMove}
-                isP1GoalRow={y === 0}
-                isP2GoalRow={y === 8}
-                isP3GoalCol={playerCount >= 3 && x === 8}
-                isP4GoalCol={playerCount === 4 && x === 0}
+                isP1GoalRow={victoryCondition === 'classic' && y === 0}
+                isP2GoalRow={victoryCondition === 'classic' && y === 8}
+                isP3GoalCol={victoryCondition === 'classic' && playerCount >= 3 && x === 8}
+                isP4GoalCol={victoryCondition === 'classic' && playerCount === 4 && x === 0}
+                isVortexCenter={victoryCondition === 'vortex' && x === 4 && y === 4}
                 theme={theme}
                 onSelect={onCellClick}
               />

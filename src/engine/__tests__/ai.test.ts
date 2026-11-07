@@ -131,4 +131,42 @@ describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
       expect(val.isValid).toBe(true);
     }
   });
+
+  describe('Mode Vortex Central (3 & 4 joueurs)', () => {
+    it('sets the target goal of all players to central cell (4,4) in Vortex mode', () => {
+      const playersVortex = createInitialPlayers(4, 'ai', undefined, undefined, 'vortex');
+      for (const p of Object.values(playersVortex)) {
+        expect(p.targetGoal.type).toBe('cell');
+        expect(p.targetGoal.targetCell).toEqual({ x: 4, y: 4 });
+      }
+    });
+
+    it('bot pathfinding targets central cell (4,4) directly in Vortex mode', () => {
+      const playersVortex = createInitialPlayers(3, 'ai', undefined, undefined, 'vortex');
+      const bot = playersVortex[2]; // Slot 2 (starts at 4,0)
+      const allPlayers = Object.values(playersVortex);
+
+      const action = quoridorAI.computeAction(bot, allPlayers, [], 'hard');
+      expect(action).toBeDefined();
+      if (action.type === 'move') {
+        // From (4,0), moving towards (4,4) means moving down (y = 1)
+        expect(action.to).toEqual({ x: 4, y: 1 });
+      }
+    });
+
+    it('immediately wins when bot moves into the vortex center (4,4)', () => {
+      const playersVortex = createInitialPlayers(3, 'ai', undefined, undefined, 'vortex');
+      const nearWinBot = {
+        ...playersVortex[2],
+        position: { x: 4, y: 3 }, // 1 step from (4,4)!
+      };
+      const allPlayers = [playersVortex[1], nearWinBot, playersVortex[3]];
+
+      const action = quoridorAI.computeAction(nearWinBot, allPlayers, [], 'hard');
+      expect(action.type).toBe('move');
+      if (action.type === 'move') {
+        expect(action.to).toEqual({ x: 4, y: 4 });
+      }
+    });
+  });
 });

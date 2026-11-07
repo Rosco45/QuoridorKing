@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
-import type { GameMode, AIDifficulty, PlayerCount, BlitzTimerSetting, PlayerId, PlayerSlotConfig } from '../types/game';
-import { X, Users, Zap, Shield, Flame, Check, Globe, Timer, Bot, User, Play } from 'lucide-react';
+import type { GameMode, AIDifficulty, PlayerCount, BlitzTimerSetting, PlayerId, PlayerSlotConfig, VictoryCondition } from '../types/game';
+import { X, Users, Zap, Shield, Flame, Check, Globe, Timer, Bot, User, Play, Compass, Target } from 'lucide-react';
 
 interface ModeModalProps {
   isOpen: boolean;
   currentMode: GameMode;
   currentDifficulty: AIDifficulty;
   playerCount: PlayerCount;
+  victoryCondition?: VictoryCondition;
   blitzTimer: BlitzTimerSetting;
   onSelectMode: (
     mode: GameMode,
     difficulty: AIDifficulty,
     count: PlayerCount,
-    customSlots?: Record<PlayerId, PlayerSlotConfig>
+    customSlots?: Record<PlayerId, PlayerSlotConfig>,
+    victoryCondition?: VictoryCondition
   ) => void;
   onSelectTimer: (timer: BlitzTimerSetting) => void;
   onOpenOnline: () => void;
@@ -38,6 +40,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
   currentMode,
   currentDifficulty,
   playerCount: initialPlayerCount,
+  victoryCondition: initialVictoryCondition = 'classic',
   blitzTimer,
   onSelectMode,
   onSelectTimer,
@@ -45,11 +48,14 @@ export const ModeModal: React.FC<ModeModalProps> = ({
   onClose,
 }) => {
   const [activeTab, setActiveTab] = useState<'presets' | 'custom'>(
-    initialPlayerCount === 3 ? 'custom' : 'presets'
+    initialPlayerCount === 3 || initialVictoryCondition === 'vortex' ? 'custom' : 'presets'
   );
 
   // Custom Lobby State
   const [customCount, setCustomCount] = useState<PlayerCount>(initialPlayerCount);
+  const [selectedVictoryCondition, setSelectedVictoryCondition] = useState<VictoryCondition>(
+    initialVictoryCondition
+  );
   const [slots, setSlots] = useState<Record<PlayerId, PlayerSlotConfig>>({
     1: { id: 1, type: 'human', name: 'Vous', difficulty: 'medium' },
     2: { id: 2, type: 'bot', name: 'Bot Alpha', difficulty: 'medium' },
@@ -104,8 +110,9 @@ export const ModeModal: React.FC<ModeModalProps> = ({
     // primary difficulty fallback
     const primaryBot = activeIds.find((id) => slots[id].type === 'bot');
     const diff = primaryBot ? slots[primaryBot].difficulty : 'medium';
+    const condition = customCount >= 3 ? selectedVictoryCondition : 'classic';
 
-    onSelectMode(mode, diff, customCount, slots);
+    onSelectMode(mode, diff, customCount, slots, condition);
     onClose();
   };
 
@@ -198,10 +205,82 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                 )}
               </div>
 
+              {/* Mode de Victoire (Classique vs Vortex Central - pour 3 ou 4 joueurs) */}
+              <div>
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-xs font-extrabold tracking-wider uppercase text-slate-400">
+                    2. Mode de Victoire
+                  </span>
+                  {customCount === 2 && (
+                    <span className="text-[10px] text-slate-500 italic">
+                      (Vortex réservé aux parties à 3 ou 4 joueurs)
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Mode Classique */}
+                  <div
+                    onClick={() => setSelectedVictoryCondition('classic')}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                      selectedVictoryCondition === 'classic' || customCount === 2
+                        ? 'bg-sky-950/40 border-sky-500 ring-1 ring-sky-400/50'
+                        : 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/60'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <Compass className="w-4 h-4 text-sky-400" />
+                        <span className="font-bold text-xs text-slate-100">Classique</span>
+                      </div>
+                      {(selectedVictoryCondition === 'classic' || customCount === 2) && (
+                        <span className="p-0.5 rounded-full bg-sky-500 text-slate-950">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-tight">
+                      Traverser le plateau vers la ligne opposée.
+                    </p>
+                  </div>
+
+                  {/* Mode Vortex Central */}
+                  <div
+                    onClick={() => {
+                      if (customCount >= 3) {
+                        setSelectedVictoryCondition('vortex');
+                      }
+                    }}
+                    className={`p-3 rounded-2xl border transition-all flex flex-col justify-between ${
+                      customCount < 3
+                        ? 'opacity-40 cursor-not-allowed bg-slate-900 border-slate-800'
+                        : selectedVictoryCondition === 'vortex'
+                        ? 'bg-amber-950/40 border-amber-500 ring-1 ring-amber-400/50 cursor-pointer shadow-md'
+                        : 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/60 cursor-pointer'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <Target className="w-4 h-4 text-amber-400" />
+                        <span className="font-bold text-xs text-amber-200">Vortex Central</span>
+                      </div>
+                      {selectedVictoryCondition === 'vortex' && customCount >= 3 && (
+                        <span className="p-0.5 rounded-full bg-amber-400 text-slate-950">
+                          <Check className="w-3 h-3 stroke-[3]" />
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 leading-tight">
+                      Course vers la case centrale <strong>E5</strong>. Premier arrivé gagne !
+                    </p>
+                  </div>
+                </div>
+              </div>
+
               {/* Slots Configuration */}
               <div>
                 <span className="text-xs font-extrabold tracking-wider uppercase text-slate-400 block mb-2 px-1">
-                  2. Configuration des Emplacements ({customCount} Joueurs)
+                  3. Configuration des Emplacements ({customCount} Joueurs)
                 </span>
 
                 <div className="space-y-2.5">
