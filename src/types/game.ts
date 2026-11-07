@@ -109,10 +109,10 @@ export interface CoinFlipState {
 }
 
 export type NetworkMessage =
-  | { type: 'SYNC_LOBBY'; players: PeerPlayerInfo[]; playerCount: PlayerCount; timerSetting: BlitzTimerSetting; coinFlip: CoinFlipState }
+  | { type: 'SYNC_LOBBY'; players: PeerPlayerInfo[]; playerCount: PlayerCount; timerSetting: BlitzTimerSetting; coinFlip: CoinFlipState; victoryCondition?: VictoryCondition }
   | { type: 'COIN_FLIP_CHOICE'; choice: CoinSide }
   | { type: 'COIN_FLIP_TRIGGER'; result: CoinSide; winnerPlayerId: PlayerId }
-  | { type: 'START_GAME'; startPlayerId: PlayerId }
+  | { type: 'START_GAME'; startPlayerId: PlayerId; victoryCondition?: VictoryCondition }
   | { type: 'GAME_MOVE'; playerId: PlayerId; to: Position }
   | { type: 'GAME_WALL'; playerId: PlayerId; x: number; y: number; orientation: WallOrientation }
   | { type: 'GAME_TIMEOUT'; playerId: PlayerId }

@@ -110,7 +110,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
     // primary difficulty fallback
     const primaryBot = activeIds.find((id) => slots[id].type === 'bot');
     const diff = primaryBot ? slots[primaryBot].difficulty : 'medium';
-    const condition = customCount >= 3 ? selectedVictoryCondition : 'classic';
+    const condition = selectedVictoryCondition;
 
     onSelectMode(mode, diff, customCount, slots, condition);
     onClose();
@@ -205,17 +205,15 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                 )}
               </div>
 
-              {/* Mode de Victoire (Classique vs Vortex Central - pour 3 ou 4 joueurs) */}
+              {/* Mode de Victoire (Classique vs Vortex Central - disponible de 2 à 4 joueurs) */}
               <div>
                 <div className="flex items-center justify-between mb-2 px-1">
                   <span className="text-xs font-extrabold tracking-wider uppercase text-slate-400">
                     2. Mode de Victoire
                   </span>
-                  {customCount === 2 && (
-                    <span className="text-[10px] text-slate-500 italic">
-                      (Vortex réservé aux parties à 3 ou 4 joueurs)
-                    </span>
-                  )}
+                  <span className="text-[10px] text-amber-400/90 font-semibold">
+                    Disponible de 2 à 4 Joueurs
+                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-2">
@@ -223,7 +221,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                   <div
                     onClick={() => setSelectedVictoryCondition('classic')}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
-                      selectedVictoryCondition === 'classic' || customCount === 2
+                      selectedVictoryCondition === 'classic'
                         ? 'bg-sky-950/40 border-sky-500 ring-1 ring-sky-400/50'
                         : 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/60'
                     }`}
@@ -233,7 +231,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                         <Compass className="w-4 h-4 text-sky-400" />
                         <span className="font-bold text-xs text-slate-100">Classique</span>
                       </div>
-                      {(selectedVictoryCondition === 'classic' || customCount === 2) && (
+                      {selectedVictoryCondition === 'classic' && (
                         <span className="p-0.5 rounded-full bg-sky-500 text-slate-950">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </span>
@@ -246,17 +244,11 @@ export const ModeModal: React.FC<ModeModalProps> = ({
 
                   {/* Mode Vortex Central */}
                   <div
-                    onClick={() => {
-                      if (customCount >= 3) {
-                        setSelectedVictoryCondition('vortex');
-                      }
-                    }}
-                    className={`p-3 rounded-2xl border transition-all flex flex-col justify-between ${
-                      customCount < 3
-                        ? 'opacity-40 cursor-not-allowed bg-slate-900 border-slate-800'
-                        : selectedVictoryCondition === 'vortex'
-                        ? 'bg-amber-950/40 border-amber-500 ring-1 ring-amber-400/50 cursor-pointer shadow-md'
-                        : 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/60 cursor-pointer'
+                    onClick={() => setSelectedVictoryCondition('vortex')}
+                    className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
+                      selectedVictoryCondition === 'vortex'
+                        ? 'bg-amber-950/40 border-amber-500 ring-1 ring-amber-400/50 shadow-md'
+                        : 'bg-slate-800/60 hover:bg-slate-800 border-slate-700/60'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
@@ -264,7 +256,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                         <Target className="w-4 h-4 text-amber-400" />
                         <span className="font-bold text-xs text-amber-200">Vortex Central</span>
                       </div>
-                      {selectedVictoryCondition === 'vortex' && customCount >= 3 && (
+                      {selectedVictoryCondition === 'vortex' && (
                         <span className="p-0.5 rounded-full bg-amber-400 text-slate-950">
                           <Check className="w-3 h-3 stroke-[3]" />
                         </span>
@@ -393,6 +385,46 @@ export const ModeModal: React.FC<ModeModalProps> = ({
           ) : (
             /* --- TAB PRESETS RAPIDES --- */
             <>
+              {/* Option Mode de Victoire pour Presets */}
+              <div className="p-2.5 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold text-slate-300">
+                    Objectif de Victoire :
+                  </span>
+                  <div className="flex items-center bg-slate-900 rounded-xl p-0.5 border border-slate-700">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedVictoryCondition('classic')}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                        selectedVictoryCondition === 'classic'
+                          ? 'bg-sky-500 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <Compass className="w-3 h-3" />
+                      <span>Classique</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedVictoryCondition('vortex')}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                        selectedVictoryCondition === 'vortex'
+                          ? 'bg-amber-400 text-slate-950 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <Target className="w-3 h-3" />
+                      <span>Vortex Central</span>
+                    </button>
+                  </div>
+                </div>
+                <p className="text-[10px] text-slate-400 italic">
+                  {selectedVictoryCondition === 'vortex'
+                    ? '🎯 Condition : Premier pion sur la case centrale E5 gagne la partie.'
+                    : '🏁 Condition : Atteindre la ligne opposée de départ.'}
+                </p>
+              </div>
+
               {/* Section: Mode Local Pass-and-Play */}
               <div>
                 <span className="text-xs font-extrabold tracking-wider uppercase text-slate-400 block mb-2 px-1">
@@ -403,7 +435,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                   {/* 2 Joueurs */}
                   <div
                     onClick={() => {
-                      onSelectMode('pass-and-play', currentDifficulty, 2);
+                      onSelectMode('pass-and-play', currentDifficulty, 2, undefined, selectedVictoryCondition);
                       onClose();
                     }}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
@@ -428,7 +460,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                   {/* 4 Joueurs */}
                   <div
                     onClick={() => {
-                      onSelectMode('pass-and-play', currentDifficulty, 4);
+                      onSelectMode('pass-and-play', currentDifficulty, 4, undefined, selectedVictoryCondition);
                       onClose();
                     }}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between ${
@@ -499,7 +531,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                   {/* Facile */}
                   <div
                     onClick={() => {
-                      onSelectMode('ai', 'easy', 2);
+                      onSelectMode('ai', 'easy', 2, undefined, selectedVictoryCondition);
                       onClose();
                     }}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
@@ -534,7 +566,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                   {/* Moyen */}
                   <div
                     onClick={() => {
-                      onSelectMode('ai', 'medium', 2);
+                      onSelectMode('ai', 'medium', 2, undefined, selectedVictoryCondition);
                       onClose();
                     }}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
@@ -569,7 +601,7 @@ export const ModeModal: React.FC<ModeModalProps> = ({
                   {/* Difficile */}
                   <div
                     onClick={() => {
-                      onSelectMode('ai', 'hard', 2);
+                      onSelectMode('ai', 'hard', 2, undefined, selectedVictoryCondition);
                       onClose();
                     }}
                     className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${

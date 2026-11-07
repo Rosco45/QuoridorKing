@@ -12,9 +12,9 @@ import type {
 } from '../types/game';
 
 export interface MultiplayerCallbacks {
-  onLobbyUpdate?: (players: PeerPlayerInfo[], playerCount: PlayerCount, timer: BlitzTimerSetting, coinFlip: CoinFlipState) => void;
+  onLobbyUpdate?: (players: PeerPlayerInfo[], playerCount: PlayerCount, timer: BlitzTimerSetting, coinFlip: CoinFlipState, victoryCondition?: import('../types/game').VictoryCondition) => void;
   onCoinFlipUpdate?: (state: CoinFlipState) => void;
-  onGameStart?: (startPlayerId: PlayerId) => void;
+  onGameStart?: (startPlayerId: PlayerId, victoryCondition?: import('../types/game').VictoryCondition) => void;
   onRemoteMove?: (playerId: PlayerId, to: Position) => void;
   onRemoteWall?: (playerId: PlayerId, x: number, y: number, orientation: WallOrientation) => void;
   onRemoteTimeout?: (playerId: PlayerId) => void;
@@ -51,6 +51,7 @@ export class MultiplayerService {
 
   public playerCount: PlayerCount = 2;
   public timerSetting: BlitzTimerSetting = 0;
+  public victoryCondition: import('../types/game').VictoryCondition = 'classic';
   public peers: PeerPlayerInfo[] = [];
   public coinFlip: CoinFlipState = {
     hostChoice: null,
@@ -134,13 +135,15 @@ export class MultiplayerService {
   public async createRoom(
     hostName: string,
     playerCount: PlayerCount = 2,
-    timerSetting: BlitzTimerSetting = 0
+    timerSetting: BlitzTimerSetting = 0,
+    victoryCondition: import('../types/game').VictoryCondition = 'classic'
   ): Promise<string> {
     this.destroy();
     this.isHost = true;
     this.myName = hostName || 'Créateur';
     this.playerCount = playerCount;
     this.timerSetting = timerSetting;
+    this.victoryCondition = victoryCondition;
     this.myPlayerId = 1;
 
     const roomId = this.generateRoomCode();
@@ -405,6 +408,9 @@ export class MultiplayerService {
       this.playerCount = msg.playerCount;
       this.timerSetting = msg.timerSetting;
       this.coinFlip = msg.coinFlip;
+      if (msg.victoryCondition) {
+        this.victoryCondition = msg.victoryCondition;
+      }
 
       const me = this.peers.find((p) => p.peerId === this.myPeerId);
       if (me) {
@@ -412,7 +418,7 @@ export class MultiplayerService {
         resolveJoin?.(me.playerNumber);
       }
 
-      this.callbacks.onLobbyUpdate?.(this.peers, this.playerCount, this.timerSetting, this.coinFlip);
+      this.callbacks.onLobbyUpdate?.(this.peers, this.playerCount, this.timerSetting, this.coinFlip, this.victoryCondition);
     } else if (msg.type === 'COIN_FLIP_TRIGGER') {
       this.coinFlip = {
         hostChoice: this.coinFlip.hostChoice,
@@ -422,7 +428,10 @@ export class MultiplayerService {
       };
       this.callbacks.onCoinFlipUpdate?.(this.coinFlip);
     } else if (msg.type === 'START_GAME') {
-      this.callbacks.onGameStart?.(msg.startPlayerId);
+      if (msg.victoryCondition) {
+        this.victoryCondition = msg.victoryCondition;
+      }
+      this.callbacks.onGameStart?.(msg.startPlayerId, this.victoryCondition);
     } else if (msg.type === 'GAME_MOVE') {
       this.callbacks.onRemoteMove?.(msg.playerId, msg.to);
     } else if (msg.type === 'GAME_WALL') {
@@ -482,10 +491,11 @@ export class MultiplayerService {
     const msg: NetworkMessage = {
       type: 'START_GAME',
       startPlayerId,
+      victoryCondition: this.victoryCondition,
     };
 
     this.broadcast(msg);
-    this.callbacks.onGameStart?.(startPlayerId);
+    this.callbacks.onGameStart?.(startPlayerId, this.victoryCondition);
   }
 
   public sendMove(to: Position) {
@@ -546,9 +556,10 @@ export class MultiplayerService {
       playerCount: this.playerCount,
       timerSetting: this.timerSetting,
       coinFlip: this.coinFlip,
+      victoryCondition: this.victoryCondition,
     };
     this.broadcast(msg);
-    this.callbacks.onLobbyUpdate?.(this.peers, this.playerCount, this.timerSetting, this.coinFlip);
+    this.callbacks.onLobbyUpdate?.(this.peers, this.playerCount, this.timerSetting, this.coinFlip, this.victoryCondition);
   }
 
   public destroy() {

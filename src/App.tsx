@@ -387,7 +387,7 @@ export const App: React.FC = () => {
       mode: GameMode,
       diff: AIDifficulty = aiDifficulty,
       customSlots?: Record<PlayerId, import('./types/game').PlayerSlotConfig>,
-      condition: import('./types/game').VictoryCondition = count >= 3 ? victoryCondition : 'classic'
+      condition: import('./types/game').VictoryCondition = victoryCondition
     ) => {
       if (aiTimeoutRef.current) {
         clearTimeout(aiTimeoutRef.current);
@@ -396,7 +396,7 @@ export const App: React.FC = () => {
       setIsAIThinking(false);
       setLastBotAction(null);
 
-      const resolvedCondition = count >= 3 ? condition : 'classic';
+      const resolvedCondition = condition || 'classic';
       setVictoryCondition(resolvedCondition);
       try {
         localStorage.setItem('quoridor_victory_condition', resolvedCondition);
@@ -1127,13 +1127,20 @@ export const App: React.FC = () => {
 
   // When game starts from OnlineLobbyModal
   const handleStartOnlineGame = useCallback(
-    (roomCode: string, myPlayerId: PlayerId, count: PlayerCount, startingPlayerId: PlayerId) => {
+    (
+      roomCode: string,
+      myPlayerId: PlayerId,
+      count: PlayerCount,
+      startingPlayerId: PlayerId,
+      condition: import('./types/game').VictoryCondition = 'classic'
+    ) => {
       setOnlineRoomCode(roomCode);
       setOnlinePlayerId(myPlayerId);
       setPlayerCount(count);
       setGameMode('online');
+      setVictoryCondition(condition);
 
-      const freshPlayers = createInitialPlayers(count, 'online');
+      const freshPlayers = createInitialPlayers(count, 'online', undefined, undefined, condition);
       setPlayers(freshPlayers);
       setActivePlayerId(startingPlayerId);
       setWalls([]);
@@ -1146,7 +1153,11 @@ export const App: React.FC = () => {
       setTurnSecondsLeft(blitzTimer || 0);
 
       setIsOnlineModalOpen(false);
-      showToast('success', 'Partie en Ligne Commencée !', `Vous jouez le Joueur ${myPlayerId}.`);
+      showToast(
+        'success',
+        'Partie en Ligne Commencée !',
+        `Vous jouez le Joueur ${myPlayerId}${condition === 'vortex' ? ' (Mode Vortex Central)' : ''}.`
+      );
     },
     [blitzTimer, showToast]
   );

@@ -132,8 +132,16 @@ describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
     }
   });
 
-  describe('Mode Vortex Central (3 & 4 joueurs)', () => {
-    it('sets the target goal of all players to central cell (4,4) in Vortex mode', () => {
+  describe('Mode Vortex Central (2, 3 & 4 joueurs)', () => {
+    it('sets the target goal of all players to central cell (4,4) in Vortex mode for 2 players', () => {
+      const playersVortex2p = createInitialPlayers(2, 'ai', undefined, undefined, 'vortex');
+      expect(playersVortex2p[1].targetGoal.type).toBe('cell');
+      expect(playersVortex2p[1].targetGoal.targetCell).toEqual({ x: 4, y: 4 });
+      expect(playersVortex2p[2].targetGoal.type).toBe('cell');
+      expect(playersVortex2p[2].targetGoal.targetCell).toEqual({ x: 4, y: 4 });
+    });
+
+    it('sets the target goal of all players to central cell (4,4) in Vortex mode for 4 players', () => {
       const playersVortex = createInitialPlayers(4, 'ai', undefined, undefined, 'vortex');
       for (const p of Object.values(playersVortex)) {
         expect(p.targetGoal.type).toBe('cell');
@@ -141,7 +149,19 @@ describe('AI Engine Tests (Facile, Normal, Difficile)', () => {
       }
     });
 
-    it('bot pathfinding targets central cell (4,4) directly in Vortex mode', () => {
+    it('2-player bot pathfinding targets central cell (4,4) directly in Vortex mode', () => {
+      const playersVortex = createInitialPlayers(2, 'ai', undefined, undefined, 'vortex');
+      const bot = playersVortex[2]; // Slot 2 (starts at 4,0)
+      const allPlayers = Object.values(playersVortex);
+
+      const action = quoridorAI.computeAction(bot, allPlayers, [], 'hard');
+      expect(action).toBeDefined();
+      if (action.type === 'move') {
+        expect(action.to).toEqual({ x: 4, y: 1 });
+      }
+    });
+
+    it('bot pathfinding targets central cell (4,4) directly in 3-player Vortex mode', () => {
       const playersVortex = createInitialPlayers(3, 'ai', undefined, undefined, 'vortex');
       const bot = playersVortex[2]; // Slot 2 (starts at 4,0)
       const allPlayers = Object.values(playersVortex);

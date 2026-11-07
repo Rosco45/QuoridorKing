@@ -1,11 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import type { PlayerCount, BlitzTimerSetting, PeerPlayerInfo, CoinSide, CoinFlipState, PlayerId } from '../types/game';
-import { X, Check, Copy, Share2, Users, Wifi, Play, Coins, AlertCircle, RefreshCw } from 'lucide-react';
+import type { PlayerCount, BlitzTimerSetting, PeerPlayerInfo, CoinSide, CoinFlipState, PlayerId, VictoryCondition } from '../types/game';
+import { X, Check, Copy, Share2, Users, Wifi, Play, Coins, AlertCircle, RefreshCw, Compass, Target } from 'lucide-react';
 import { multiplayerService } from '../engine/multiplayer';
 
 interface OnlineLobbyModalProps {
   isOpen: boolean;
-  onStartGame: (roomCode: string, myPlayerId: PlayerId, count: PlayerCount, startingPlayerId: PlayerId) => void;
+  onStartGame: (
+    roomCode: string,
+    myPlayerId: PlayerId,
+    count: PlayerCount,
+    startingPlayerId: PlayerId,
+    victoryCondition: VictoryCondition
+  ) => void;
   onClose: () => void;
 }
 
@@ -21,6 +27,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
   const [joinCode, setJoinCode] = useState<string>('');
   const [selectedPlayerCount, setSelectedPlayerCount] = useState<PlayerCount>(2);
   const [selectedTimer, setSelectedTimer] = useState<BlitzTimerSetting>(0);
+  const [selectedVictoryCondition, setSelectedVictoryCondition] = useState<VictoryCondition>('classic');
   const [copiedLink, setCopiedLink] = useState<boolean>(false);
   const [isConnecting, setIsConnecting] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -32,6 +39,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
   const [roomId, setRoomId] = useState<string>('');
   const [peers, setPeers] = useState<PeerPlayerInfo[]>([]);
   const [lobbyPlayerCount, setLobbyPlayerCount] = useState<PlayerCount>(2);
+  const [lobbyVictoryCondition, setLobbyVictoryCondition] = useState<VictoryCondition>('classic');
   const [coinFlip, setCoinFlip] = useState<CoinFlipState>({
     hostChoice: null,
     result: null,
@@ -54,21 +62,26 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
   // Set callbacks on multiplayerService
   useEffect(() => {
     multiplayerService.setCallbacks({
-      onLobbyUpdate: (updatedPeers, count, _timer, updatedCoinFlip) => {
+      onLobbyUpdate: (updatedPeers, count, _timer, updatedCoinFlip, condition) => {
         setPeers([...updatedPeers]);
         setLobbyPlayerCount(count);
         setCoinFlip({ ...updatedCoinFlip });
+        if (condition) {
+          setLobbyVictoryCondition(condition);
+        }
         setIsConnecting(false);
       },
       onCoinFlipUpdate: (flipState) => {
         setCoinFlip({ ...flipState });
       },
-      onGameStart: (startPlayerId) => {
+      onGameStart: (startPlayerId, condition) => {
+        const finalCondition = condition || lobbyVictoryCondition;
         onStartGame(
           multiplayerService.currentRoomId,
           multiplayerService.myPlayerId,
           multiplayerService.playerCount,
-          startPlayerId
+          startPlayerId,
+          finalCondition
         );
       },
       onConnectionStatus: (_status, message) => {
@@ -81,7 +94,7 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
         setIsConnecting(false);
       },
     });
-  }, [onStartGame]);
+  }, [onStartGame, lobbyVictoryCondition]);
 
   if (!isOpen) return null;
 
@@ -138,12 +151,14 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
       const room = await multiplayerService.createRoom(
         playerName.trim(),
         selectedPlayerCount,
-        selectedTimer
+        selectedTimer,
+        selectedVictoryCondition
       );
       setRoomId(room);
       setIsHost(true);
       setIsInLobby(true);
       setLobbyPlayerCount(selectedPlayerCount);
+      setLobbyVictoryCondition(selectedVictoryCondition);
       setPeers([...multiplayerService.peers]);
     } catch (err: unknown) {
       setErrorMsg((err as Error)?.message || 'Erreur lors de la création du salon');
@@ -295,6 +310,39 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                     </div>
                   </div>
 
+                  {/* Mode de Victoire */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                      Mode de Victoire :
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedVictoryCondition('classic')}
+                        className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                          selectedVictoryCondition === 'classic'
+                            ? 'bg-sky-950/40 border-sky-500 text-sky-300 ring-1 ring-sky-400/40'
+                            : 'bg-slate-800/80 border-slate-700 text-slate-400'
+                        }`}
+                      >
+                        <Compass className="w-3.5 h-3.5 text-sky-400" />
+                        <span>Classique</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedVictoryCondition('vortex')}
+                        className={`p-2 rounded-xl border text-xs font-bold flex items-center justify-center gap-1.5 transition-all ${
+                          selectedVictoryCondition === 'vortex'
+                            ? 'bg-amber-950/40 border-amber-500 text-amber-300 ring-1 ring-amber-400/40'
+                            : 'bg-slate-800/80 border-slate-700 text-slate-400'
+                        }`}
+                      >
+                        <Target className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Vortex Central</span>
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Timer Blitz */}
                   <div>
                     <label className="block text-xs font-bold text-slate-300 mb-1.5">
@@ -368,10 +416,17 @@ export const OnlineLobbyModal: React.FC<OnlineLobbyModalProps> = ({
                     </span>
                   </div>
 
-                  {/* Status badge */}
-                  <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-900 border border-slate-700 text-[10px]">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="font-semibold text-slate-300">{statusMsg || 'Salon en ligne'}</span>
+                  {/* Mode & status badge */}
+                  <div className="flex items-center gap-1.5">
+                    {lobbyVictoryCondition === 'vortex' && (
+                      <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-bold">
+                        Vortex Central
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-full bg-slate-900 border border-slate-700 text-[10px]">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span className="font-semibold text-slate-300">{statusMsg || 'Salon en ligne'}</span>
+                    </div>
                   </div>
                 </div>
 
